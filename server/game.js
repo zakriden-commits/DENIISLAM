@@ -110,8 +110,10 @@ export class Game {
     this.time+=dt;this.tickId++;
     if(this.bankCash<180000&&this.time>this.restockAt){this.bankCash=Math.min(180000,this.bankCash+5000);this.restockAt=this.time+120;}
     for(const p of this.players.values()) {
+      const wasSleeping=p.sleep>0;
       p.sleep=Math.max(0,p.sleep-dt);
       if(p.sleep>0)continue;
+      if(wasSleeping){p.x=WORLD.spawns[p.slot].x+2.5;p.z=WORLD.spawns[p.slot].z+1;}
       const input=p.input,len=Math.hypot(input.x,input.z),running=input.run&&p.stamina>1&&p.job?.stage!=='carry';
       const speed=p.job?.stage==='carry'?2.5:running?7:4;
       if(len>.05){const dx=input.x/Math.max(1,len)*speed*dt,dz=input.z/Math.max(1,len)*speed*dt;if(!blocked(p.x+dx,p.z,this.door))p.x+=dx;if(!blocked(p.x,p.z+dz,this.door))p.z+=dz;p.yaw=Math.atan2(input.x,input.z);}

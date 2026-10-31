@@ -20,3 +20,5 @@ test('saves restore profile, hand cash, bag and locker after restart',()=>{const
 test('wanted stars decay only after hiding; closed home protects sight',()=>{const {g,p}=setup();g.door=false;g.crime(p,2);assert.equal(p.wanted,2);step(g,17);assert.equal(p.wanted,2);step(g,2);assert.equal(p.wanted,1);step(g,19);assert.equal(p.wanted,0);});
 test('walls, world boundary and home door are solid',()=>{assert.equal(blocked(58,0),true);assert.equal(blocked(-31,17),true);assert.equal(blocked(-22,10,false),true);assert.equal(blocked(-22,10,true),false);assert.equal(blocked(0,-13),false);});
 test('invalid input cannot inject NaN into world',()=>{const {g,p}=setup();g.action(p,{type:'input',x:'bogus',z:null,aim:'NaN'});g.step(.05);assert.ok(Number.isFinite(p.x));assert.ok(Number.isFinite(p.z));assert.ok(Number.isFinite(p.input.aim));});
+
+test("waking up puts each player beside their bed",()=>{const {g,p}=setup();p.sleep=3;step(g,3.1);assert.equal(p.sleep,0);assert.equal(p.x,WORLD.spawns[0].x+2.5);assert.equal(p.z,WORLD.spawns[0].z+1);});

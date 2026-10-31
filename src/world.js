@@ -31,7 +31,7 @@ export function animateCharacter(g,state,t,dt){
   u.body.position.y=1+(moving?Math.abs(Math.sin(t*9))*.025:Math.sin(t*1.8)*.012);
   const item=state.carrying?'crate':state.selected;
   if(u.item!==item){u.held.clear();if(item==='crate')box(u.held,.65,.55,.5,-.3,0,.3,'#a08b5c');else if(item&&item!=='fist'){const model=weaponModel(item);if(item==='pistol'||item==='smg')model.rotation.x=.95;u.held.add(model);}u.item=item;}
-  if(state.sleep>0){g.rotation.z=-Math.PI/2*Math.min(1,state.sleep);g.position.y=.7*Math.min(1,state.sleep);}else{g.rotation.z=0;g.position.y=0;}
+  if(state.sleep>0){g.rotation.x=-Math.PI/2*Math.min(1,state.sleep);g.rotation.y=0;g.position.y=.7*Math.min(1,state.sleep);}else{g.rotation.x=0;g.position.y=0;}
 }
 export class City {
   constructor(scene){this.scene=scene;this.roofs=[];this.obstacles=[];this.lamps=[];this.make();this.batchStatic();}
