@@ -1,24 +1,291 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { Game } from '../server/game.js';
-import { WORLD, ITEMS, blocked } from '../src/shared.js';
-function setup(){const g=new Game();const p=g.add('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','deni');p.sleep=0;g.npcs=[];return {g,p};}
-function step(g,t){for(let i=0;i<Math.ceil(t/.05);i++)g.step(.05);}
-test('one shared room, unique roles, capacity two',()=>{const {g,p}=setup();assert.throws(()=>g.add('b','deni'),/персонаж/);const p2=g.add('b','islam');assert.equal(p.slot,0);assert.equal(p2.slot,1);assert.throws(()=>g.add('c','deni'),/заполнен/);assert.throws(()=>g.add(p.id,'deni'),/профиль/);});
-test('purchase requires shop proximity and sufficient funds',()=>{const {g,p}=setup();p.balance=2000;g.action(p,{type:'buy',item:'pistol'});assert.equal(p.inventory.length,0);Object.assign(p,{x:24,z:15});g.action(p,{type:'buy',item:'pistol'});assert.deepEqual(p.inventory,['pistol']);assert.equal(p.balance,1350);g.action(p,{type:'buy',item:'pistol'});assert.equal(p.balance,1350);g.action(p,{type:'buy',item:'smg'});assert.equal(p.inventory.length,1);});
-test('ammo is separate; reload consumes reserve, firing consumes magazine',()=>{const {g,p}=setup();Object.assign(p,{x:24,z:15,balance:1000});g.action(p,{type:'buy',item:'pistol'});g.action(p,{type:'select',item:'pistol'});g.action(p,{type:'reload'});assert.equal(p.reload,undefined);g.action(p,{type:'buy',item:'ammo'});assert.equal(p.ammo,24);g.action(p,{type:'reload'});step(g,1.7);assert.equal(p.mag.pistol,12);assert.equal(p.ammo,12);g.action(p,{type:'shoot'});assert.equal(p.mag.pistol,11);});
-test('player damage is never a valid target (no friendly fire)',()=>{const {g,p}=setup();const buddy=g.add('friend','islam');buddy.sleep=0;Object.assign(p,{x:0,z:0,selected:'pistol',inventory:['pistol'],mag:{pistol:12,smg:0}});Object.assign(buddy,{x:0,z:2});p.input.aim=0;for(let i=0;i<6;i++){g.action(p,{type:'shoot'});step(g,.4);}assert.equal(buddy.hp,100);});
-test('sight is directional and walls block it',()=>{const {g}=setup();assert.equal(g.canSee({x:0,z:0,yaw:0},{x:0,z:4}),true);assert.equal(g.canSee({x:0,z:0,yaw:0},{x:0,z:-4}),false);g.door=false;assert.equal(g.canSee({x:-22,z:8,yaw:0},{x:-22,z:13}),false);g.door=true;assert.equal(g.canSee({x:-22,z:8,yaw:0},{x:-22,z:13}),true);});
-test('hand loot needs 15 seconds, creates five bundles and deposits random value',()=>{const {g,p}=setup();Object.assign(p,WORLD.loot);g.action(p,{type:'lootStart'});step(g,14);assert.equal(p.bundles,0);step(g,1.1);assert.equal(p.bundles,5);assert.ok(p.handCash>=2500&&p.handCash<=9999);const value=p.handCash,before=p.balance;g.action(p,{type:'select',item:'cash'});g.action(p,{type:'deposit'});assert.equal(p.balance,before+value);assert.equal(p.bundles,0);});
-test('release or movement cancels looting',()=>{const {g,p}=setup();Object.assign(p,WORLD.loot);g.action(p,{type:'lootStart'});step(g,5);g.action(p,{type:'lootStop'});step(g,16);assert.equal(p.bundles,0);g.action(p,{type:'lootStart'});g.action(p,{type:'input',x:1,z:0});step(g,.1);assert.equal(p.loot,null);});
-test('equipped bag takes 30 seconds; partial withdrawal is bounded',()=>{const {g,p}=setup();Object.assign(p,{...WORLD.loot,inventory:['bag'],selected:'bag'});g.action(p,{type:'lootStart'});step(g,29);assert.equal(p.bagCash,0);step(g,1.1);assert.equal(p.bagCash,50000);g.action(p,{type:'deposit',amount:1234});assert.equal(p.bagCash,48766);assert.equal(p.balance,1434);g.action(p,{type:'deposit',amount:9999999});assert.equal(p.bagCash,0);assert.equal(p.balance,50200);});
-test('personal lockers have 15 slots and preserve loaded gun / bag cash',()=>{const {g,p}=setup();Object.assign(p,{...WORLD.lockers[0],inventory:['pistol','bag'],selected:'bag',bagCash:3400});p.mag.pistol=8;g.action(p,{type:'locker',direction:'store',index:1});assert.equal(p.bagCash,0);assert.equal(p.locker[0].cash,3400);g.action(p,{type:'locker',direction:'store',index:0});assert.equal(p.locker[1].loaded,8);g.action(p,{type:'locker',direction:'take',index:1});assert.equal(p.mag.pistol,8);g.action(p,{type:'locker',direction:'take',index:0});assert.equal(p.bagCash,3400);p.locker=Array.from({length:15},()=>({item:'medkit'}));g.action(p,{type:'locker',direction:'store',index:0});assert.equal(p.locker.length,15);});
-test('other player cannot access your locker',()=>{const {g,p}=setup();Object.assign(p,{...WORLD.lockers[1],inventory:['pistol']});g.action(p,{type:'locker',direction:'store',index:0});assert.equal(p.locker.length,0);});
-test('three crate deliveries award money once',()=>{const {g,p}=setup();Object.assign(p,WORLD.job);g.action(p,{type:'job'});const reward=p.job.reward;for(let i=0;i<3;i++){Object.assign(p,WORLD.job);g.action(p,{type:'interactJob'});assert.equal(p.job.stage,'carry');Object.assign(p,WORLD.truck);g.action(p,{type:'interactJob'});}assert.equal(p.balance,200+reward);assert.equal(p.job,null);g.action(p,{type:'interactJob'});assert.equal(p.balance,200+reward);});
-test('death wipes carried items, not locker or balance',()=>{const {g,p}=setup();Object.assign(p,{hp:0,inventory:['pistol','bag'],ammo:99,bagCash:3000,bundles:5,handCash:5000,balance:999,locker:[{item:'medkit'}]});g.step(.05);assert.equal(p.hp,100);assert.deepEqual(p.inventory,[]);assert.equal(p.ammo,0);assert.equal(p.bagCash,0);assert.equal(p.balance,999);assert.equal(p.locker.length,1);assert.equal(p.sleep,3);});
-test('saves restore profile, hand cash, bag and locker after restart',()=>{const {g,p}=setup();Object.assign(p,{inventory:['bag'],bagCash:1234,bundles:5,handCash:5432,balance:912,locker:[{item:'pistol',loaded:4,cash:0}]});const save=JSON.parse(JSON.stringify(g.save()));const g2=new Game(save),restored=g2.add(p.id,'deni');assert.equal(restored.balance,912);assert.equal(restored.handCash,5432);assert.equal(restored.bagCash,1234);assert.equal(restored.locker[0].loaded,4);assert.equal(restored.x,WORLD.spawns[0].x);});
-test('wanted stars decay only after hiding; closed home protects sight',()=>{const {g,p}=setup();g.door=false;g.crime(p,2);assert.equal(p.wanted,2);step(g,17);assert.equal(p.wanted,2);step(g,2);assert.equal(p.wanted,1);step(g,19);assert.equal(p.wanted,0);});
-test('walls, world boundary and home door are solid',()=>{assert.equal(blocked(58,0),true);assert.equal(blocked(-31,17),true);assert.equal(blocked(-22,10,false),true);assert.equal(blocked(-22,10,true),false);assert.equal(blocked(0,-13),false);});
-test('invalid input cannot inject NaN into world',()=>{const {g,p}=setup();g.action(p,{type:'input',x:'bogus',z:null,aim:'NaN'});g.step(.05);assert.ok(Number.isFinite(p.x));assert.ok(Number.isFinite(p.z));assert.ok(Number.isFinite(p.input.aim));});
+import test from "node:test";
+import assert from "node:assert/strict";
+import { Game } from "../server/game.js";
+import { WORLD, ITEMS, blocked } from "../src/shared.js";
+function setup() {
+  const g = new Game();
+  const p = g.add("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "deni");
+  p.sleep = 0;
+  g.npcs = [];
+  return { g, p };
+}
+function step(g, t) {
+  for (let i = 0; i < Math.ceil(t / 0.05); i++) g.step(0.05);
+}
+test("one shared room, unique roles, capacity two", () => {
+  const { g, p } = setup();
+  assert.throws(() => g.add("b", "deni"), /персонаж/);
+  const p2 = g.add("b", "islam");
+  assert.equal(p.slot, 0);
+  assert.equal(p2.slot, 1);
+  assert.throws(() => g.add("c", "deni"), /заполнен/);
+  assert.throws(() => g.add(p.id, "deni"), /профиль/);
+});
+test("purchase requires shop proximity and sufficient funds", () => {
+  const { g, p } = setup();
+  p.balance = 2000;
+  g.action(p, { type: "buy", item: "pistol" });
+  assert.equal(p.inventory.length, 0);
+  Object.assign(p, { x: 24, z: 15 });
+  g.action(p, { type: "buy", item: "pistol" });
+  assert.deepEqual(p.inventory, ["pistol"]);
+  assert.equal(p.balance, 1350);
+  g.action(p, { type: "buy", item: "pistol" });
+  assert.equal(p.balance, 1350);
+  g.action(p, { type: "buy", item: "smg" });
+  assert.equal(p.inventory.length, 1);
+});
+test("ammo is separate; reload consumes reserve, firing consumes magazine", () => {
+  const { g, p } = setup();
+  Object.assign(p, { x: 24, z: 15, balance: 1000 });
+  g.action(p, { type: "buy", item: "pistol" });
+  g.action(p, { type: "select", item: "pistol" });
+  g.action(p, { type: "reload" });
+  assert.equal(p.reload, undefined);
+  g.action(p, { type: "buy", item: "ammo" });
+  assert.equal(p.ammo, 24);
+  g.action(p, { type: "reload" });
+  step(g, 1.7);
+  assert.equal(p.mag.pistol, 12);
+  assert.equal(p.ammo, 12);
+  g.action(p, { type: "shoot" });
+  assert.equal(p.mag.pistol, 11);
+});
+test("player damage is never a valid target (no friendly fire)", () => {
+  const { g, p } = setup();
+  const buddy = g.add("friend", "islam");
+  buddy.sleep = 0;
+  Object.assign(p, {
+    x: 0,
+    z: 0,
+    selected: "pistol",
+    inventory: ["pistol"],
+    mag: { pistol: 12, smg: 0 },
+  });
+  Object.assign(buddy, { x: 0, z: 2 });
+  p.input.aim = 0;
+  for (let i = 0; i < 6; i++) {
+    g.action(p, { type: "shoot" });
+    step(g, 0.4);
+  }
+  assert.equal(buddy.hp, 100);
+});
+test("sight is directional and walls block it", () => {
+  const { g } = setup();
+  assert.equal(g.canSee({ x: 0, z: 0, yaw: 0 }, { x: 0, z: 4 }), true);
+  assert.equal(g.canSee({ x: 0, z: 0, yaw: 0 }, { x: 0, z: -4 }), false);
+  g.door = false;
+  assert.equal(g.canSee({ x: -22, z: 8, yaw: 0 }, { x: -22, z: 13 }), false);
+  g.door = true;
+  assert.equal(g.canSee({ x: -22, z: 8, yaw: 0 }, { x: -22, z: 13 }), true);
+});
+test("hand loot needs 15 seconds, creates five bundles and deposits random value", () => {
+  const { g, p } = setup();
+  Object.assign(p, WORLD.loot);
+  g.action(p, { type: "lootStart" });
+  step(g, 14);
+  assert.equal(p.bundles, 0);
+  step(g, 1.1);
+  assert.equal(p.bundles, 5);
+  assert.ok(p.handCash >= 2500 && p.handCash <= 9999);
+  const value = p.handCash,
+    before = p.balance;
+  g.action(p, { type: "select", item: "cash" });
+  g.action(p, { type: "deposit" });
+  assert.equal(p.balance, before + value);
+  assert.equal(p.bundles, 0);
+});
+test("release or movement cancels looting", () => {
+  const { g, p } = setup();
+  Object.assign(p, WORLD.loot);
+  g.action(p, { type: "lootStart" });
+  step(g, 5);
+  g.action(p, { type: "lootStop" });
+  step(g, 16);
+  assert.equal(p.bundles, 0);
+  g.action(p, { type: "lootStart" });
+  g.action(p, { type: "input", x: 1, z: 0 });
+  step(g, 0.1);
+  assert.equal(p.loot, null);
+});
+test("equipped bag takes 30 seconds; partial withdrawal is bounded", () => {
+  const { g, p } = setup();
+  Object.assign(p, { ...WORLD.loot, inventory: ["bag"], selected: "bag" });
+  g.action(p, { type: "lootStart" });
+  step(g, 29);
+  assert.equal(p.bagCash, 0);
+  step(g, 1.1);
+  assert.equal(p.bagCash, 50000);
+  g.action(p, { type: "deposit", amount: 1234 });
+  assert.equal(p.bagCash, 48766);
+  assert.equal(p.balance, 1434);
+  g.action(p, { type: "deposit", amount: 9999999 });
+  assert.equal(p.bagCash, 0);
+  assert.equal(p.balance, 50200);
+});
+test("personal lockers have 15 slots and preserve loaded gun / bag cash", () => {
+  const { g, p } = setup();
+  Object.assign(p, {
+    ...WORLD.lockers[0],
+    inventory: ["pistol", "bag"],
+    selected: "bag",
+    bagCash: 3400,
+  });
+  p.mag.pistol = 8;
+  g.action(p, { type: "locker", direction: "store", index: 1 });
+  assert.equal(p.bagCash, 0);
+  assert.equal(p.locker[0].cash, 3400);
+  g.action(p, { type: "locker", direction: "store", index: 0 });
+  assert.equal(p.locker[1].loaded, 8);
+  g.action(p, { type: "locker", direction: "take", index: 1 });
+  assert.equal(p.mag.pistol, 8);
+  g.action(p, { type: "locker", direction: "take", index: 0 });
+  assert.equal(p.bagCash, 3400);
+  p.locker = Array.from({ length: 15 }, () => ({ item: "medkit" }));
+  g.action(p, { type: "locker", direction: "store", index: 0 });
+  assert.equal(p.locker.length, 15);
+});
+test("other player cannot access your locker", () => {
+  const { g, p } = setup();
+  Object.assign(p, { ...WORLD.lockers[1], inventory: ["pistol"] });
+  g.action(p, { type: "locker", direction: "store", index: 0 });
+  assert.equal(p.locker.length, 0);
+});
+test("three crate deliveries award money once", () => {
+  const { g, p } = setup();
+  Object.assign(p, WORLD.job);
+  g.action(p, { type: "job" });
+  const reward = p.job.reward;
+  for (let i = 0; i < 3; i++) {
+    Object.assign(p, WORLD.job);
+    g.action(p, { type: "interactJob" });
+    assert.equal(p.job.stage, "carry");
+    Object.assign(p, WORLD.truck);
+    g.action(p, { type: "interactJob" });
+  }
+  assert.equal(p.balance, 200 + reward);
+  assert.equal(p.job, null);
+  g.action(p, { type: "interactJob" });
+  assert.equal(p.balance, 200 + reward);
+});
+test("death wipes carried items, not locker or balance", () => {
+  const { g, p } = setup();
+  Object.assign(p, {
+    hp: 0,
+    inventory: ["pistol", "bag"],
+    ammo: 99,
+    bagCash: 3000,
+    bundles: 5,
+    handCash: 5000,
+    balance: 999,
+    locker: [{ item: "medkit" }],
+  });
+  g.step(0.05);
+  assert.equal(p.hp, 100);
+  assert.deepEqual(p.inventory, []);
+  assert.equal(p.ammo, 0);
+  assert.equal(p.bagCash, 0);
+  assert.equal(p.balance, 999);
+  assert.equal(p.locker.length, 1);
+  assert.equal(p.sleep, 3);
+});
+test("saves restore profile, hand cash, bag and locker after restart", () => {
+  const { g, p } = setup();
+  Object.assign(p, {
+    inventory: ["bag"],
+    bagCash: 1234,
+    bundles: 5,
+    handCash: 5432,
+    balance: 912,
+    locker: [{ item: "pistol", loaded: 4, cash: 0 }],
+  });
+  const save = JSON.parse(JSON.stringify(g.save()));
+  const g2 = new Game(save),
+    restored = g2.add(p.id, "deni");
+  assert.equal(restored.balance, 912);
+  assert.equal(restored.handCash, 5432);
+  assert.equal(restored.bagCash, 1234);
+  assert.equal(restored.locker[0].loaded, 4);
+  assert.equal(restored.x, WORLD.spawns[0].x);
+});
+test("wanted stars decay only after hiding; closed home protects sight", () => {
+  const { g, p } = setup();
+  g.door = false;
+  g.crime(p, 2);
+  assert.equal(p.wanted, 2);
+  step(g, 17);
+  assert.equal(p.wanted, 2);
+  step(g, 2);
+  assert.equal(p.wanted, 1);
+  step(g, 19);
+  assert.equal(p.wanted, 0);
+});
+test("walls, world boundary and home door are solid", () => {
+  assert.equal(blocked(58, 0), true);
+  assert.equal(blocked(-31, 17), true);
+  assert.equal(blocked(-22, 10, false), true);
+  assert.equal(blocked(-22, 10, true), false);
+  assert.equal(blocked(0, -13), false);
+});
+test("invalid input cannot inject NaN into world", () => {
+  const { g, p } = setup();
+  g.action(p, { type: "input", x: "bogus", z: null, aim: "NaN" });
+  g.step(0.05);
+  assert.ok(Number.isFinite(p.x));
+  assert.ok(Number.isFinite(p.z));
+  assert.ok(Number.isFinite(p.input.aim));
+});
 
-test("waking up puts each player beside their bed",()=>{const {g,p}=setup();p.sleep=3;step(g,3.1);assert.equal(p.sleep,0);assert.equal(p.x,WORLD.spawns[0].x+2.5);assert.equal(p.z,WORLD.spawns[0].z+1);});
+test("waking up puts each player beside their bed", () => {
+  const { g, p } = setup();
+  p.sleep = 3;
+  step(g, 3.1);
+  assert.equal(p.sleep, 0);
+  assert.equal(p.x, WORLD.spawns[0].x + 2.5);
+  assert.equal(p.z, WORLD.spawns[0].z + 1);
+});
+
+test("missing mobile inputs stop movement within half a second", () => {
+  const { g, p } = setup();
+  Object.assign(p, { x: 0, z: 0 });
+  g.action(p, { type: "input", x: 1, z: 0, aim: 0 });
+  step(g, 0.8);
+  const stopped = p.x;
+  step(g, 1);
+  assert.equal(p.x, stopped);
+  assert.ok(p.x <= 2.1);
+});
+test("disconnected player is frozen while their session is reserved", () => {
+  const { g, p } = setup();
+  p.connected = false;
+  p.input = { x: 1, z: 0, run: true, aim: 0 };
+  p.loot = { elapsed: 2, duration: 15, bag: false };
+  const before = { x: p.x, z: p.z, stamina: p.stamina };
+  step(g, 5);
+  assert.equal(p.x, before.x);
+  assert.equal(p.z, before.z);
+  assert.equal(p.stamina, before.stamina);
+  assert.equal(p.loot.elapsed, 2);
+});
+test("FPS aiming upward does not hit a person on the ground", () => {
+  const { g, p } = setup();
+  Object.assign(p, {
+    x: 0,
+    z: 0,
+    selected: "pistol",
+    inventory: ["pistol"],
+    mag: { pistol: 12, smg: 0 },
+  });
+  g.npcs = [
+    { id: "target", type: "civil", x: 0, z: 6, yaw: 0, hp: 100, dead: 0 },
+  ];
+  g.action(p, { type: "input", x: 0, z: 0, aim: 0, pitch: 1.2 });
+  g.action(p, { type: "shoot" });
+  assert.equal(g.npcs[0].hp, 100);
+  step(g, 0.4);
+  g.npcs[0].x = 0;
+  g.npcs[0].z = 6;
+  g.action(p, { type: "input", x: 0, z: 0, aim: 0, pitch: 0 });
+  g.action(p, { type: "shoot" });
+  assert.equal(g.npcs[0].hp, 70);
+});

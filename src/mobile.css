@@ -1,0 +1,848 @@
+/* Steel, tobacco, rain. Keep the HUD sharp above the low-resolution 3D pass. */
+:root {
+  --lime: #dac082;
+  --muted: #aaa69b;
+  background: #242626;
+  color: #e6e1d5;
+}
+html,
+body {
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  touch-action: none;
+}
+#menu,
+#hud {
+  height: 100%;
+  height: 100dvh;
+}
+canvas#game {
+  filter: saturate(0.58) contrast(1.12);
+  object-fit: fill;
+}
+body.retro canvas#game {
+  image-rendering: pixelated;
+}
+#noise {
+  opacity: 0.075;
+  mix-blend-mode: soft-light;
+}
+#scanlines {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.045;
+  background: repeating-linear-gradient(
+    0deg,
+    #000 0,
+    #000 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+#vignette {
+  background:
+    linear-gradient(90deg, #101516e8, #11181922 70%, #0e171742),
+    linear-gradient(0deg, #101617b0, transparent 40%);
+}
+body.playing #vignette {
+  opacity: 0.65;
+  background: radial-gradient(ellipse at center, transparent 40%, #10131477);
+}
+.dot {
+  background: var(--lime);
+  box-shadow: 0 0 8px #ddbe7950;
+}
+.role.selected {
+  background: #8b754429;
+}
+.crew-panel {
+  background: linear-gradient(145deg, #292c29ed, #151a1aee);
+  border-color: #b9ad8e44;
+}
+.menu-header .text-button {
+  margin-left: 20px;
+  white-space: nowrap;
+}
+.menu-header .build-tag {
+  margin-left: auto;
+  margin-right: 50px;
+  color: #c6bcaa;
+  font-size: 9px;
+}
+.menu-content h1 {
+  color: #ddd9ce;
+  text-shadow: 2px 3px 0 #161b1966;
+}
+h1 > span {
+  color: var(--lime);
+}
+.primary {
+  background: var(--lime);
+  color: #252820;
+}
+.primary:hover {
+  background: #e5cfa0;
+}
+.eyebrow {
+  color: var(--lime);
+}
+.connection {
+  flex-wrap: wrap;
+  max-width: 410px;
+  line-height: 1.5;
+}
+.temporary-host {
+  flex-basis: 100%;
+  color: #c7a48b;
+  font-size: 9px;
+  letter-spacing: 0.3px;
+  padding-left: 15px;
+}
+.session-chip,
+.hud-button,
+.radar-wrap,
+.slot,
+#interaction {
+  background: #1b2322dd;
+  border-color: #b2ab9044;
+  backdrop-filter: blur(4px);
+}
+.slot.active {
+  border-color: var(--lime);
+  background: #bca36326;
+  box-shadow: inset 0 -2px var(--lime);
+}
+.bar.stamina i {
+  background: var(--lime);
+}
+.vitals {
+  background: linear-gradient(90deg, #182121e8, #19222277);
+  border-color: #d5be7b99;
+}
+.modal-card {
+  background: #232c2b;
+  border-color: #b4ab9155;
+}
+.modal-copy {
+  color: #c3beb1;
+}
+.shop-item {
+  background: #111b1a77;
+}
+.toast {
+  background: #1a2424ee;
+  border-color: var(--lime);
+}
+#joystick {
+  background: #29302e44;
+  border-color: #e1d4b45c;
+}
+#stick {
+  background: #d0b78059;
+  border-color: #d9c7a0a8;
+}
+.field select,
+.field input:not([type="range"]) {
+  background: #151f1f;
+  border: 1px solid #adab8b66;
+  color: #e1dbca;
+  padding: 13px;
+  font-size: 14px;
+  border-radius: 0;
+}
+.field input[type="range"] {
+  accent-color: var(--lime);
+  height: 40px;
+  padding: 0;
+  cursor: pointer;
+}
+#crosshair {
+  width: 22px;
+  height: 22px;
+  font-size: 0;
+  filter: drop-shadow(0 1px 2px #000);
+}
+#crosshair:before,
+#crosshair:after {
+  content: "";
+  position: absolute;
+  background: #eee5d9bb;
+  top: 10px;
+  left: 0;
+  width: 6px;
+  height: 1px;
+  box-shadow: 16px 0 0 #eee5d9bb;
+}
+#crosshair:after {
+  transform: rotate(90deg);
+  transform-origin: 11px 1px;
+}
+#crosshair i {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 2px;
+  height: 2px;
+  background: #e8d5b1;
+}
+#rotateHint {
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: calc(env(safe-area-inset-top) + 62px);
+  transform: translateX(-50%);
+  font-size: 9px;
+  color: #e2c7a1;
+  white-space: nowrap;
+  background: #192121c9;
+  padding: 6px 9px;
+  border: 1px solid #c2ab7866;
+  pointer-events: none;
+}
+.portrait-phone #rotateHint {
+  display: block;
+}
+#disconnect {
+  z-index: 35;
+  background: #0c1517bc;
+  backdrop-filter: blur(5px);
+}
+#disconnect > div {
+  background: #202b2c;
+  border-color: #b6a68377;
+  width: min(540px, 92vw);
+  max-height: 92dvh;
+  overflow: auto;
+}
+#disconnect h2 {
+  letter-spacing: -0.8px;
+}
+#retryCountdown {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--lime);
+}
+#disconnect .primary {
+  font-size: 13px;
+  min-width: 185px;
+}
+#fullscreenBtn {
+  font-size: 22px;
+}
+.shop-item button {
+  background: var(--lime);
+}
+@media (pointer: coarse) {
+  .hud-top {
+    top: max(12px, env(safe-area-inset-top));
+    left: max(15px, env(safe-area-inset-left));
+    right: max(15px, env(safe-area-inset-right));
+  }
+  .hud-button {
+    height: 46px;
+    min-width: 46px;
+    font-size: 12px;
+  }
+  .top-controls {
+    gap: 7px;
+  }
+  #fullscreenBtn {
+    font-size: 25px;
+  }
+  button {
+    touch-action: none;
+  }
+  #joystick {
+    width: 112px;
+    height: 112px;
+    left: max(32px, env(safe-area-inset-left));
+    bottom: max(102px, calc(env(safe-area-inset-bottom) + 88px));
+  }
+  #stick {
+    width: 44px;
+    height: 44px;
+    left: calc(50% - 22px);
+    top: calc(50% - 22px);
+  }
+  #mobileActions {
+    right: max(24px, env(safe-area-inset-right));
+    bottom: max(112px, calc(env(safe-area-inset-bottom) + 90px));
+    gap: 12px;
+    align-items: end;
+  }
+  #mobileActions button {
+    width: 50px;
+    height: 50px;
+    font-size: 25px;
+    border-color: #e1d3b16b;
+    background: #1f2b2b9e;
+    box-shadow: 0 2px 16px #0003;
+  }
+  #mobileActions #attackBtn {
+    width: 80px;
+    height: 80px;
+    border: 2px solid #d7bd8899;
+    background: #b19a6536;
+    font-size: 42px;
+  }
+  #mobileActions #runBtn.active {
+    background: #b49a5f99;
+    color: #fff3d6;
+    border-color: #e8c878;
+  }
+  #mobileActions #touchInteract {
+    width: 56px;
+    height: 56px;
+    bottom: 101px;
+    right: 12px;
+    border-radius: 12px;
+    background: var(--lime);
+    color: #202623;
+    font-weight: 800;
+    font-size: 21px;
+  }
+  .hud-bottom {
+    bottom: max(13px, env(safe-area-inset-bottom));
+    left: max(20px, env(safe-area-inset-left));
+    right: max(20px, env(safe-area-inset-right));
+  }
+  .slot {
+    width: 47px;
+    height: 47px;
+  }
+  .slot svg {
+    width: 29px;
+    height: 27px;
+  }
+  .slot > small {
+    font-size: 7px;
+  }
+  .inventory-area {
+    left: 52%;
+    max-width: 45%;
+    bottom: 0;
+  }
+  #interaction {
+    bottom: max(166px, calc(env(safe-area-inset-bottom) + 150px));
+    padding: 9px 13px;
+    max-width: 43%;
+    min-height: 45px;
+    pointer-events: none;
+    text-align: center;
+  }
+  #interaction b {
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  #interaction small {
+    font-size: 8px;
+    line-height: 1.4;
+  }
+  #lootProgress {
+    bottom: max(224px, calc(env(safe-area-inset-bottom) + 207px));
+    width: 260px;
+    padding: 12px;
+  }
+  #toastStack {
+    top: 26%;
+    width: min(360px, 53vw);
+    pointer-events: none;
+  }
+  .toast {
+    font-size: 11px;
+    padding: 9px 12px;
+  }
+  .map-button {
+    right: max(23px, env(safe-area-inset-right));
+    bottom: max(26px, env(safe-area-inset-bottom));
+    min-height: 40px;
+    min-width: 65px;
+    pointer-events: auto;
+  }
+  .close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .text-button {
+    min-height: 40px;
+  }
+  .shop-item button,
+  .item-row button,
+  .secondary {
+    min-height: 44px;
+  }
+}
+@media (pointer: coarse) and (orientation: landscape) {
+  .menu-header {
+    top: max(12px, env(safe-area-inset-top));
+    left: max(26px, env(safe-area-inset-left));
+    right: max(26px, env(safe-area-inset-right));
+  }
+  .brand-small span {
+    font-size: 7px;
+    letter-spacing: 1.3px;
+  }
+  .menu-header .build-tag {
+    display: none;
+  }
+  #displayBtn {
+    margin-left: auto;
+    margin-right: 18px;
+  }
+  .menu-header .text-button {
+    font-size: 10px;
+    gap: 12px;
+  }
+  .menu-content {
+    top: 23%;
+    left: max(6%, env(safe-area-inset-left));
+    width: 49%;
+  }
+  h1 {
+    font-size: clamp(54px, 12.5vh, 88px);
+    margin: 13px 0 11px;
+    letter-spacing: -4px;
+  }
+  .menu-content > .eyebrow {
+    font-size: 7px;
+    letter-spacing: 1.4px;
+  }
+  .intro {
+    font-size: 10px;
+    line-height: 1.65;
+    margin: 8px 0;
+  }
+  .menu-actions {
+    margin-top: 12px;
+    gap: 8px;
+  }
+  .primary {
+    padding: 9px 17px;
+    font-size: 14px;
+    min-width: 180px;
+    min-height: 45px;
+  }
+  .square {
+    width: 45px;
+  }
+  .connection {
+    font-size: 7px;
+    margin-top: 9px;
+    max-width: 260px;
+  }
+  .temporary-host {
+    font-size: 7px;
+  }
+  .crew-panel {
+    top: 23%;
+    bottom: auto;
+    left: auto;
+    right: max(5%, env(safe-area-inset-right));
+    width: 252px;
+    padding: 13px;
+  }
+  .crew-panel > .eyebrow {
+    font-size: 7px;
+    letter-spacing: 1.6px;
+  }
+  .role-grid {
+    margin: 9px 0 12px;
+    gap: 8px;
+  }
+  .role .portrait {
+    display: none;
+  }
+  .role {
+    padding: 9px 10px;
+    height: 51px;
+  }
+  .role-name {
+    font-size: 14px;
+    padding: 0;
+  }
+  .role small {
+    font-size: 6px;
+    padding: 5px 0 0;
+  }
+  .role-check {
+    font-size: 9px;
+  }
+  .server-row {
+    padding: 10px 0;
+    font-size: 10px;
+  }
+  .server-row small {
+    font-size: 7px;
+  }
+  .voice-option {
+    font-size: 9px;
+    margin-top: 10px;
+    gap: 7px;
+  }
+  .voice-option small {
+    font-size: 7px;
+  }
+  .settings-link {
+    font-size: 8px;
+    margin-top: 1px;
+    min-height: 34px;
+  }
+  .menu-footer {
+    bottom: max(12px, env(safe-area-inset-bottom));
+    font-size: 6px;
+  }
+  .footer-hint {
+    display: none;
+  }
+  #mission {
+    top: 77px;
+    left: max(17px, env(safe-area-inset-left));
+    width: 190px;
+  }
+  #mission p {
+    font-size: 9px;
+    line-height: 1.4;
+  }
+  #mission > b {
+    font-size: 11px;
+    margin: 4px 0;
+  }
+  .radar-wrap {
+    top: 73px;
+    right: max(17px, env(safe-area-inset-right));
+    width: 102px;
+  }
+  .radar-label {
+    font-size: 5px;
+    padding: 5px;
+  }
+  .wanted {
+    font-size: 15px;
+    letter-spacing: 3px;
+    padding: 2px;
+  }
+  .vitals {
+    width: 151px;
+    padding: 8px 10px;
+  }
+  .balance {
+    margin-bottom: 5px;
+  }
+  .balance b {
+    font-size: 18px;
+  }
+  .vital-row {
+    margin-bottom: 4px;
+  }
+  .player-label {
+    margin-top: 6px;
+  }
+  .slot {
+    width: 44px;
+    height: 44px;
+  }
+  .inventory-area {
+    left: 50%;
+    max-width: 45%;
+  }
+  #joystick {
+    width: 99px;
+    height: 99px;
+    bottom: max(90px, calc(env(safe-area-inset-bottom) + 78px));
+  }
+  #mobileActions {
+    bottom: max(90px, calc(env(safe-area-inset-bottom) + 78px));
+    gap: 10px;
+  }
+  #mobileActions #attackBtn {
+    width: 70px;
+    height: 70px;
+  }
+  #mobileActions button {
+    width: 46px;
+    height: 46px;
+  }
+  #mobileActions #touchInteract {
+    bottom: 86px;
+    right: 8px;
+    width: 50px;
+    height: 50px;
+  }
+  #interaction {
+    bottom: 140px;
+    max-width: 40%;
+    min-height: 41px;
+  }
+  #lootProgress {
+    bottom: 192px;
+  }
+  .modal-card {
+    max-height: 90dvh;
+    padding: 18px 22px;
+  }
+  .modal-header {
+    margin-bottom: 15px;
+  }
+  .modal-header h2 {
+    font-size: 25px;
+  }
+  .modal-copy {
+    font-size: 12px;
+  }
+  .field {
+    margin: 13px 0;
+  }
+  .shop-item img {
+    height: 62px;
+  }
+  .shop-item p {
+    min-height: 40px;
+  }
+  .shop-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  #spawnBanner {
+    top: 32%;
+  }
+  #spawnBanner b {
+    font-size: 23px;
+  }
+}
+@media (pointer: coarse) and (orientation: portrait) {
+  .menu-header {
+    left: 6%;
+    right: 6%;
+    gap: 12px;
+  }
+  .menu-header .brand-small {
+    gap: 8px;
+  }
+  .brand-small span {
+    max-width: 100px;
+    font-size: 6px;
+    padding-left: 9px;
+  }
+  #displayBtn {
+    margin-left: auto;
+    gap: 8px;
+    font-size: 10px;
+  }
+  .menu-header #aboutBtn {
+    font-size: 10px;
+    gap: 8px;
+    margin-left: 2px;
+  }
+  .menu-content {
+    top: 16%;
+  }
+  .crew-panel {
+    bottom: max(53px, calc(env(safe-area-inset-bottom) + 40px));
+    padding: 12px 14px;
+  }
+  .menu-footer {
+    bottom: max(20px, env(safe-area-inset-bottom));
+  }
+  .temporary-host {
+    font-size: 7px;
+  }
+  .hud-top {
+    gap: 8px;
+  }
+  .session-chip {
+    gap: 8px;
+    padding: 5px 8px;
+  }
+  .session-chip > b {
+    font-size: 20px;
+  }
+  .session-chip > div {
+    font-size: 7px;
+  }
+  .session-chip .dot {
+    margin-left: 0;
+  }
+  .hud-button {
+    width: 42px;
+    min-width: 42px;
+    height: 44px;
+    font-size: 10px;
+  }
+  .top-controls {
+    gap: 5px;
+  }
+  #mission {
+    top: 111px;
+    width: 170px;
+  }
+  .radar-wrap {
+    top: 111px;
+    width: 100px;
+  }
+  #joystick {
+    bottom: 192px;
+    left: 22px;
+    width: 104px;
+    height: 104px;
+  }
+  #mobileActions {
+    bottom: 194px;
+    right: 17px;
+    gap: 9px;
+    align-items: end;
+  }
+  #mobileActions #attackBtn {
+    width: 70px;
+    height: 70px;
+  }
+  #mobileActions button {
+    width: 46px;
+    height: 46px;
+  }
+  #mobileActions #runBtn {
+    position: absolute;
+    right: 0;
+    bottom: 90px;
+  }
+  #mobileActions #touchInteract {
+    bottom: 158px;
+    right: 5px;
+  }
+  #interaction {
+    bottom: 310px;
+    max-width: 60%;
+    font-size: 10px;
+    left: 42%;
+  }
+  #lootProgress {
+    bottom: 371px;
+    width: 260px;
+  }
+  .vitals {
+    width: 128px;
+  }
+  .inventory-area {
+    left: auto;
+    right: 0;
+    transform: none;
+    max-width: calc(100% - 139px);
+  }
+  #hotbar {
+    justify-content: flex-end;
+  }
+  .slot {
+    width: 44px;
+    height: 44px;
+  }
+  #toastStack {
+    top: 31%;
+    width: 88vw;
+  }
+  .map-button {
+    bottom: 109px;
+    right: 18px;
+  }
+  .shop-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .modal-card {
+    max-height: 88dvh;
+  }
+  .compass {
+    display: none;
+  }
+}
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 375px) {
+  .menu-content {
+    top: 24%;
+  }
+  h1 {
+    font-size: 47px;
+    margin: 10px 0 6px;
+  }
+  .intro {
+    font-size: 9px;
+    line-height: 1.4;
+  }
+  .menu-actions {
+    margin-top: 10px;
+  }
+  .crew-panel {
+    top: 22%;
+    padding: 10px 12px;
+  }
+  .server-row {
+    padding: 7px 0;
+  }
+  .role-grid {
+    margin: 6px 0 8px;
+  }
+  .voice-option small {
+    display: none;
+  }
+  .voice-option {
+    margin-top: 6px;
+  }
+  #mission p {
+    display: none;
+  }
+  .radar-wrap {
+    width: 85px;
+  }
+  #mission {
+    width: 160px;
+    top: 73px;
+  }
+  .slot {
+    width: 42px;
+    height: 42px;
+  }
+  #joystick {
+    width: 90px;
+    height: 90px;
+    bottom: 80px;
+  }
+  #mobileActions {
+    bottom: 80px;
+  }
+  #interaction {
+    bottom: 129px;
+  }
+  #lootProgress {
+    bottom: 176px;
+  }
+}
+
+#fullscreenBtn svg {
+  width: 22px;
+  height: 22px;
+  vertical-align: middle;
+  pointer-events: none;
+}
+@media (pointer: coarse) and (orientation: landscape) {
+  #joystick,
+  #mobileActions {
+    bottom: max(110px, calc(env(safe-area-inset-bottom) + 98px));
+  }
+  #mobileActions #touchInteract {
+    bottom: 60px;
+    right: 102px;
+  }
+}
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 375px) {
+  #joystick,
+  #mobileActions {
+    bottom: 98px;
+  }
+  #mobileActions #touchInteract {
+    bottom: 55px;
+    right: 98px;
+    width: 46px;
+    height: 46px;
+  }
+}

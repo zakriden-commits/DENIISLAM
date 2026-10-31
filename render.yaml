@@ -4,6 +4,7 @@ services:
   - type: web
     name: deni-islam
     runtime: docker
+    branch: arena/01855df3-deniislam
     plan: starter
     numInstances: 1
     healthCheckPath: /api/health
@@ -19,10 +20,4 @@ services:
       - key: NODE_ENV
         value: production
       - key: ROOM_CODE
-        sync: false
-      - key: TURN_URL
-        sync: false
-      - key: TURN_USERNAME
-        sync: false
-      - key: TURN_CREDENTIAL
         sync: false

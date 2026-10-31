@@ -1,6 +1,6 @@
 {
   "name": "deni-islam",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,8 @@
     "build": "vite build",
     "start": "NODE_ENV=production node server/index.js",
     "test": "node --test tests/*.test.js",
-    "android:sync": "cap sync android"
+    "android:sync": "cap sync android",
+    "test:browser": "node tests/browser-ci.js"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.3",

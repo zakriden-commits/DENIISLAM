@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       server_url:
-        description: 'HTTPS game server URL (leave empty to use GAME_SERVER_URL repository variable)'
+        description: "HTTPS game server URL (leave empty to use GAME_SERVER_URL repository variable)"
         required: false
         type: string
 permissions:
@@ -28,6 +28,15 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: Check FPS and phone controls in Chromium
+        run: npm run test:browser
+      - name: Upload browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FPS-phone-checks
+          path: test-results/
+          retention-days: 7
       - name: Upload installable iPhone / desktop web app
         uses: actions/upload-artifact@v4
         with:
@@ -69,7 +78,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "alpha-0.1.0-${GITHUB_RUN_NUMBER}" downloads/* \
+          gh release create "alpha-0.2.0-${GITHUB_RUN_NUMBER}" downloads/* \
             --target "$GITHUB_SHA" --prerelease \
-            --title "Deni Islam — Android alpha #${GITHUB_RUN_NUMBER}" \
-            --notes "Test-signed Android APK and iPhone/desktop PWA web bundle. Server: ${VITE_SERVER_URL}. The e2b.app preview is temporary, not permanent hosting. Both players must use the same server URL in Settings. Minimum Android 6 with an up-to-date WebView supporting WebGL 2. See README for persistent server deployment. This is a playable low-poly prototype, not a finished commercial release."
+            --title "Deni Islam FPS 0.2 — Android alpha #${GITHUB_RUN_NUMBER}" \
+            --notes "FPS 0.2: first-person hands and weapons, gritty retro visuals, mobile landscape controls, sensitivity settings, automatic reconnect with 90-second session reservation. Test-signed Android APK and iPhone/desktop PWA web bundle. Server: ${VITE_SERVER_URL}. The e2b.app preview is temporary, not permanent hosting. Both players must use the same server URL in Settings. Minimum Android 6 with an up-to-date WebView supporting WebGL 2. See README for persistent server deployment. This is a playable low-poly prototype, not a finished commercial release."
