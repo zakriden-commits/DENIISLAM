@@ -2,7 +2,7 @@ import { chromium as playwright } from '@playwright/test';
 import chromium from '@sparticuz/chromium';
 import { mkdir } from 'node:fs/promises';
 await mkdir('test-results',{recursive:true});
-const browser=await playwright.launch({executablePath:await chromium.executablePath(),args:[...chromium.args,'--enable-unsafe-swiftshader'],headless:true});
+const browser=await playwright.launch({executablePath:await chromium.executablePath(),args:[...chromium.args.filter(a=>!['--single-process','--in-process-gpu'].includes(a)),'--enable-unsafe-swiftshader'],headless:true});
 const page=await browser.newPage({viewport:{width:1440,height:900}});
 const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE ERROR',e.message);});page.on('console',msg=>{if(msg.type()==='error')console.error('CONSOLE',msg.text());});
 await page.goto('http://127.0.0.1:3000');await page.locator('#menu').waitFor({state:'visible'});await page.screenshot({path:'test-results/menu.png'});

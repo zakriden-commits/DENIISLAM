@@ -15,13 +15,13 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       VITE_SERVER_URL: ${{ inputs.server_url || vars.GAME_SERVER_URL || 'https://3000-iwh0asiuilxeqaap6svjf.e2b.app' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -34,11 +34,16 @@ jobs:
           name: Deni-Islam-web
           path: dist/
           retention-days: 30
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
-      - uses: android-actions/setup-android@v3
+      - name: Use Android SDK preinstalled on the runner
+        run: |
+          test -d "$ANDROID_HOME"
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          ls "$ANDROID_HOME/platforms"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
       - name: Cache test signing key (debug alpha, not Play Store)
         uses: actions/cache@v4
         with:
