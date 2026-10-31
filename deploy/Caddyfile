@@ -1,0 +1,10 @@
+{$GAME_HOST} {
+    encode zstd gzip
+    header X-Content-Type-Options nosniff
+    reverse_proxy game:3000 {
+        health_uri /api/health
+        health_interval 30s
+        health_timeout 5s
+        stream_close_delay 5m
+    }
+}

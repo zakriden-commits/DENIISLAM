@@ -1,0 +1,17 @@
+{
+  "appId": "com.deniislam.quarter",
+  "appName": "Северный рубеж",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#17201e",
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0
+    }
+  }
+}

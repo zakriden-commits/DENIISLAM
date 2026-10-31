@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"
+    />
+    <meta name="theme-color" content="#17201e" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <title>Северный рубеж — Deni / Islam</title>
+  </head>
+  <body>
+    <canvas id="game" aria-label="Трёхмерный мир выживания"></canvas>
+    <div id="grain"></div>
+    <div id="loading">
+      <span class="eyebrow">DENI / ISLAM • НОВАЯ ГЛАВА</span>
+      <h1>СЕВЕРНЫЙ<br />РУБЕЖ<span>′</span></h1>
+      <p id="loadText">Подготовка лесного массива…</p>
+      <div class="loadtrack"><i id="loadBar"></i></div>
+      <small
+        >Загружаются настоящие модели, текстуры и звук. Первый запуск
+        дольше.</small
+      >
+    </div>
+    <section id="menu" hidden>
+      <header class="menu-top">
+        <b class="brand">D / I<span>SURVIVAL PROJECT</span></b
+        ><span class="build">ПОЛЕВАЯ СБОРКА <b>0.3</b></span
+        ><button
+          class="icon-button"
+          data-open="settings"
+          aria-label="Настройки"
+        >
+          ⚙
+        </button>
+      </header>
+      <main class="menu-main">
+        <div class="eyebrow"><i></i> 67° N · ЗОНА ОТЧУЖДЕНИЯ</div>
+        <h1>СЕВЕРНЫЙ<br />РУБЕЖ<span>′</span></h1>
+        <p class="intro">
+          Север отрезан. Припасы на исходе.<br />Холод не прощает. Выживайте
+          вместе.
+        </p>
+        <div class="role-label">
+          ВАШ ВЫЖИВШИЙ <span>02 МЕСТА В ОТРЯДЕ</span>
+        </div>
+        <div class="roles">
+          <button data-role="deni" class="active">
+            <b>01 / DENI</b><small>Разведчик</small></button
+          ><button data-role="islam">
+            <b>02 / ISLAM</b><small>Механик</small>
+          </button>
+        </div>
+        <button id="play" class="primary">НАЧАТЬ ВЫЛАЗКУ <span>↗</span></button>
+        <div class="menu-links">
+          <button data-open="help">ПОЛЕВОЙ СПРАВОЧНИК</button
+          ><button data-open="credits">О ПРОЕКТЕ</button>
+        </div>
+      </main>
+      <aside class="brief">
+        <span class="eyebrow">ОПЕРАЦИЯ / 001</span>
+        <h2>ПОСЛЕДНЯЯ ЧАСТОТА</h2>
+        <p>
+          Лесопилка. Насосная. Бункер.<br />Найдите три радиодетали и верните
+          связь с внешним миром.
+        </p>
+        <div class="brief-stats">
+          <span><b>1 КМ²</b>ОТКРЫТЫЙ МИР</span><span><b>2</b>ВЫЖИВШИХ</span
+          ><span><b>−12°</b>НЕ ПРОГНОЗ</span>
+        </div>
+        <div class="brief-bottom"><i></i> ОДИН ЛЕС. ОДИН ШАНС.</div>
+      </aside>
+      <footer class="menu-bottom">
+        <span id="serverStatus">ПРОВЕРКА КАНАЛА СВЯЗИ…</span
+        ><span>КООПЕРАТИВ ОТ ПЕРВОГО ЛИЦА <b>•</b> ALPHA</span>
+      </footer>
+    </section>
+    <section id="hud" hidden>
+      <div class="hud-top">
+        <button id="pause" class="hud-brand">
+          СЕВЕРНЫЙ РУБЕЖ <span>Ⅱ</span>
+        </button>
+        <div id="compass">С <b>000</b> СВ</div>
+        <div class="weather">
+          <span id="weather">−12°C</span><b id="time">05:30</b
+          ><small id="online">01 / 02</small>
+        </div>
+      </div>
+      <div id="connection" hidden>Связь потеряна. Возвращаемся в отряд…</div>
+      <div class="mission">
+        <small>ЗАДАЧА / СВЯЗЬ</small
+        ><b id="objective">Разожгите костёр у убежища</b
+        ><span id="waypoint"></span>
+      </div>
+      <div id="crosshair"><i></i></div>
+      <div id="target" hidden>
+        <span class="key">E</span> <b id="targetText"></b>
+        <div id="gatherTrack"><i id="gatherFill"></i></div>
+      </div>
+      <div id="damage"></div>
+      <div id="frost"></div>
+      <div class="vitals">
+        <div class="health">
+          <span>ЖИЗНЬ <b id="hp">100</b></span>
+          <div><i id="hpBar"></i></div>
+        </div>
+        <div class="needs">
+          <span>ЕДА <b id="hunger">85</b></span
+          ><span>ВОДА <b id="thirst">85</b></span
+          ><span>ТЕПЛО <b id="warmth">80</b></span>
+        </div>
+        <div class="stamina"><i id="staminaBar"></i></div>
+      </div>
+      <div id="hotbar"></div>
+      <div class="equipment">
+        <small id="weaponName">ПОХОДНЫЙ ТОПОР</small
+        ><b id="ammo">— <span>/ —</span></b>
+      </div>
+      <div class="hud-tools">
+        <button id="mapButton" title="Карта (M)">КАРТА</button
+        ><button id="bagButton" title="Рюкзак (Tab)">РЮКЗАК</button
+        ><button id="mic" title="Голосовой чат">MIC</button>
+      </div>
+      <small class="desktop-hint"
+        >WASD — идти · SHIFT — бег · E — действие · TAB — рюкзак · M —
+        карта</small
+      >
+      <div id="touch">
+        <div id="stick"><div id="stickKnob"></div></div>
+        <button id="run" class="touch-button">БЕГ</button
+        ><button id="fire" class="touch-button">◎</button
+        ><button id="interact" class="touch-button">РУКА</button
+        ><button id="reload" class="touch-button">R</button
+        ><button id="jump" class="touch-button">↑</button
+        ><span class="look-hint">ПРОВЕДИТЕ СПРАВА, ЧТОБЫ ОСМОТРЕТЬСЯ</span>
+      </div>
+      <div id="rotateHint">↻ Удобнее играть горизонтально</div>
+    </section>
+    <div id="toast" role="status" hidden></div>
+    <dialog id="dialog">
+      <div class="dialog-header">
+        <div>
+          <small id="dialogTag">ПОЛЕВОЙ ТЕРМИНАЛ</small>
+          <h2 id="dialogTitle"></h2>
+        </div>
+        <button id="closeDialog" aria-label="Закрыть">×</button>
+      </div>
+      <div id="dialogBody"></div>
+    </dialog>
+    <audio id="remoteAudio" autoplay playsinline></audio>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

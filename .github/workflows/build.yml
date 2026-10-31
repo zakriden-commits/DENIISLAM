@@ -1,0 +1,86 @@
+name: Build Northern Frontier — Survival APK and web
+on:
+  push:
+    branches: [main, arena/01855df3-deniislam]
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: "HTTPS game server URL (leave empty to use GAME_SERVER_URL repository variable)"
+        required: false
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: deni-islam-build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      VITE_SERVER_URL: ${{ inputs.server_url || vars.GAME_SERVER_URL || '' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Check FPS and phone controls in Chromium
+        run: npm run test:browser
+      - name: Upload browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FPS-phone-checks
+          path: test-results/
+          retention-days: 7
+      - name: Upload installable iPhone / desktop web app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Deni-Islam-web
+          path: dist/
+          retention-days: 30
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Use Android SDK preinstalled on the runner
+        run: |
+          test -d "$ANDROID_HOME"
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          ls "$ANDROID_HOME/platforms"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+      - name: Cache test signing key (debug alpha, not Play Store)
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: deni-islam-debug-keystore-v1
+      - run: npx cap sync android
+      - name: Build Android test APK
+        run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug --no-daemon
+      - name: Verify actual survival APK exceeds 30 MiB and all licensed assets are intact
+        run: node scripts/check-apk.mjs android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Prepare downloads
+        run: |
+          mkdir -p downloads
+          cp android/app/build/outputs/apk/debug/app-debug.apk downloads/Deni-Islam-Android-alpha.apk
+          (cd dist && zip -r ../downloads/Deni-Islam-iPhone-Web.zip .)
+          sha256sum downloads/* > downloads/SHA256SUMS.txt
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Deni-Islam-Android-APK
+          path: downloads/
+          retention-days: 30
+      - name: Publish downloadable alpha
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "alpha-0.3.0-${GITHUB_RUN_NUMBER}" downloads/* \
+            --target "$GITHUB_SHA" --prerelease \
+            --title "Northern Frontier Survival 0.3 — Android alpha #${GITHUB_RUN_NUMBER}" \
+            --notes "Complete survival rebuild: new Northern Frontier menu, 1 km² forest, seven landmarks, hunger/thirst/cold, campfires, crafting/cooking, hunting, wolves and marauders, recoverable backpacks and a co-op radio repair objective. First-person controls, Android APK and iPhone PWA. Two real players, no friendly fire. The actual APK is checked to exceed 30 MiB with all 42 licensed runtime assets intact (not padding). Includes HTTP/WebSocket connection diagnostics and stale sandbox-address migration. Public server: ${VITE_SERVER_URL:-NOT CONFIGURED - enter a public HTTPS host in Settings}. The Arena e2b.app preview is access-token protected (external HTTP 403), NOT a ready-to-use APK backend or permanent hosting. A public host is still required. Old 0.2 clients are incompatible; update both devices. Test-signed alpha, not a finished AAA release; modern WebGL 2 WebView required. See README and in-game credits for licensing, controls and persistent-host deployment."

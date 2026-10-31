@@ -1,0 +1,44 @@
+# Production recipe for YOUR always-on VPS. This does not provision or pay for a VPS.
+# Copy .env.hosted.example to .env, set the domain/code and point DNS at the server.
+services:
+  game:
+    build: .
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATA_DIR: /data
+      ROOM_CODE: ${ROOM_CODE:?Set a private room code in .env}
+      RECONNECT_GRACE_MS: 90000
+      TURN_URL: ${TURN_URL:-}
+      TURN_USERNAME: ${TURN_USERNAME:-}
+      TURN_CREDENTIAL: ${TURN_CREDENTIAL:-}
+    expose: ["3000"]
+    volumes:
+      - saves:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  https:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      GAME_HOST: ${GAME_HOST:?Set your public domain in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - certificates:/data
+      - caddy_config:/config
+    depends_on:
+      game:
+        condition: service_healthy
+volumes:
+  saves:
+  certificates:
+  caddy_config:
