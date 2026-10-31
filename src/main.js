@@ -64,27 +64,33 @@ let sensitivity = +store.get("nf-sensitivity", "1"),
   keys = new Set(),
   lastBag = "";
 const native = Capacitor.isNativePlatform();
-// Migrate only obsolete sandbox defaults; never overwrite a custom permanent host.
-if (store.get("nf-server-migrated") !== "3") {
+// A protected Arena preview is not a public APK backend. Never ship its access token.
+const nativeDefault = (() => {
   try {
-    const old = new URL(store.get("di-server")),
-      fresh = new URL(
-        native ? import.meta.env.VITE_SERVER_URL : location.origin,
-      );
-    if (
-      old.hostname.endsWith(".e2b.app") &&
-      fresh.hostname.endsWith(".e2b.app")
-    )
-      store.set("di-server", fresh.origin);
+    const u = new URL(import.meta.env.VITE_SERVER_URL);
+    return u.hostname.endsWith(".e2b.app") ? "" : u.origin;
+  } catch {
+    return "";
+  }
+})();
+if (store.get("nf-server-migrated") !== "3-public") {
+  try {
+    const old = new URL(store.get("di-server"));
+    if (old.hostname.endsWith(".e2b.app")) {
+      if (native) store.set("di-server", nativeDefault);
+      else if (location.hostname.endsWith(".e2b.app"))
+        store.set("di-server", location.origin);
+    }
   } catch {}
-  store.set("nf-server-migrated", "3");
+  store.set("nf-server-migrated", "3-public");
 }
 function serverURL() {
   const raw =
-    store.get("di-server") ||
-    (native ? import.meta.env.VITE_SERVER_URL : location.origin) ||
-    import.meta.env.VITE_SERVER_URL;
-  if (!raw) throw Error("Укажите HTTPS-адрес сервера в настройках.");
+    store.get("di-server") || (native ? nativeDefault : location.origin);
+  if (!raw)
+    throw Error(
+      "Для APK нужен публичный HTTPS-сервер. Адрес ещё не настроен: откройте ⚙.",
+    );
   const u = new URL(raw);
   if (!["https:", "http:"].includes(u.protocol) || u.username || u.password)
     throw Error("Нужен адрес http:// или https:// без логина и пароля.");
@@ -139,7 +145,7 @@ function openPanel(name) {
   if (name === "settings") {
     dialog(
       "Настройки канала",
-      `<p>Оба игрока должны использовать один и тот же работающий сервер. Установка APK не запускает отдельный сервер. Временный preview не является круглосуточным хостингом.</p><label for="serverInput">HTTPS-адрес сервера</label><input id="serverInput" type="url" value="${esc(store.get("di-server") || (native ? import.meta.env.VITE_SERVER_URL || "" : location.origin))}" placeholder="https://ваш-сервер"><label for="codeInput">Код комнаты (если задан владельцем сервера)</label><input id="codeInput" type="password" value="${esc(store.get("di-room"))}" autocomplete="off"><label for="sensitivity">Чувствительность обзора</label><input id="sensitivity" type="range" min="0.4" max="2" step="0.1" value="${sensitivity}"><label for="quality">Графика</label><select id="quality"><option value="low">Экономичная — для телефона</option><option value="high">Высокая — ближние деревья детальнее</option></select><label><input id="soundInput" type="checkbox" style="width:auto" ${sound ? "checked" : ""}> Звуки леса и действий</label><button id="testServer" class="primary">ПРОВЕРИТЬ СЕРВЕР ↗</button><p id="diagnostic"></p><button id="saveSettings" class="primary">СОХРАНИТЬ И ВЕРНУТЬСЯ</button>`,
+      `<p>Оба игрока должны использовать один и тот же работающий сервер. Установка APK не запускает отдельный сервер. Текущий preview Arena защищён E2B: внешний запрос получает 403 (нужен токен платформы). Такой адрес не подходит как готовый публичный сервер APK. Секретные токены в игру не вшиваются. Нужен отдельный публичный HTTPS-хост; постоянный хост пока не развёрнут.</p><label for="serverInput">HTTPS-адрес сервера</label><input id="serverInput" type="url" value="${esc(store.get("di-server") || (native ? nativeDefault : location.origin))}" placeholder="https://ваш-сервер"><label for="codeInput">Код комнаты (если задан владельцем сервера)</label><input id="codeInput" type="password" value="${esc(store.get("di-room"))}" autocomplete="off"><label for="sensitivity">Чувствительность обзора</label><input id="sensitivity" type="range" min="0.4" max="2" step="0.1" value="${sensitivity}"><label for="quality">Графика</label><select id="quality"><option value="low">Экономичная — для телефона</option><option value="high">Высокая — ближние деревья детальнее</option></select><label><input id="soundInput" type="checkbox" style="width:auto" ${sound ? "checked" : ""}> Звуки леса и действий</label><button id="testServer" class="primary">ПРОВЕРИТЬ СЕРВЕР ↗</button><p id="diagnostic"></p><button id="saveSettings" class="primary">СОХРАНИТЬ И ВЕРНУТЬСЯ</button>`,
     );
     $("#quality").value =
       world?.quality ||
@@ -417,7 +423,12 @@ async function health(base) {
       "Сервер не отвечает: нет сети, неверный адрес или процесс выключен.",
     );
   }
-  if (!r.ok) throw Error("Сервер вернул HTTP " + r.status);
+  if (!r.ok)
+    throw Error(
+      r.status === 403
+        ? "HTTP 403: доступ закрыт защитой хоста. Нужен публичный сервер без токена платформы."
+        : "Сервер вернул HTTP " + r.status,
+    );
   let h;
   try {
     h = await r.json();
@@ -925,6 +936,8 @@ async function init() {
     requestAnimationFrame(frame);
     if ("serviceWorker" in navigator && !native && import.meta.env.PROD)
       navigator.serviceWorker.register("./sw.js").catch(() => {});
+    if (native && !store.get("di-server") && !nativeDefault)
+      openPanel("settings");
     // Read-only diagnostics for automated regressions, without a debug/admin backdoor.
     window.__survival = () => ({
       ready,

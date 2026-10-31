@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      VITE_SERVER_URL: ${{ inputs.server_url || vars.GAME_SERVER_URL || 'https://3000-iwh0asiuilxeqaap6svjf.e2b.app' }}
+      VITE_SERVER_URL: ${{ inputs.server_url || vars.GAME_SERVER_URL || '' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -83,4 +83,4 @@ jobs:
           gh release create "alpha-0.3.0-${GITHUB_RUN_NUMBER}" downloads/* \
             --target "$GITHUB_SHA" --prerelease \
             --title "Northern Frontier Survival 0.3 — Android alpha #${GITHUB_RUN_NUMBER}" \
-            --notes "Complete survival rebuild: new Northern Frontier menu, 1 km² forest, seven landmarks, hunger/thirst/cold, campfires, crafting/cooking, hunting, wolves and marauders, recoverable backpacks and a co-op radio repair objective. First-person controls, Android APK and iPhone PWA. Two real players, no friendly fire. The actual APK is checked to exceed 30 MiB with all 42 licensed runtime assets intact (not padding). Includes HTTP/WebSocket connection diagnostics and stale sandbox-address migration. Server: ${VITE_SERVER_URL}. The e2b.app preview is temporary, NOT permanent hosting. Old 0.2 clients are incompatible; update both devices. Test-signed alpha, not a finished AAA release; modern WebGL 2 WebView required. See README and in-game credits for licensing, controls and persistent-host deployment."
+            --notes "Complete survival rebuild: new Northern Frontier menu, 1 km² forest, seven landmarks, hunger/thirst/cold, campfires, crafting/cooking, hunting, wolves and marauders, recoverable backpacks and a co-op radio repair objective. First-person controls, Android APK and iPhone PWA. Two real players, no friendly fire. The actual APK is checked to exceed 30 MiB with all 42 licensed runtime assets intact (not padding). Includes HTTP/WebSocket connection diagnostics and stale sandbox-address migration. Public server: ${VITE_SERVER_URL:-NOT CONFIGURED - enter a public HTTPS host in Settings}. The Arena e2b.app preview is access-token protected (external HTTP 403), NOT a ready-to-use APK backend or permanent hosting. A public host is still required. Old 0.2 clients are incompatible; update both devices. Test-signed alpha, not a finished AAA release; modern WebGL 2 WebView required. See README and in-game credits for licensing, controls and persistent-host deployment."
