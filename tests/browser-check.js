@@ -33,7 +33,23 @@ const browser = await playwright.launch({
 });
 const errors = [];
 const base = process.env.BASE_URL || "http://127.0.0.1:3000";
+process.on("uncaughtExceptionMonitor", (e) => {
+  if (process.env.GITHUB_ACTIONS)
+    console.error(
+      "::error title=Browser regression::" +
+        String(e.stack || e)
+          .replaceAll("%", "%25")
+          .replaceAll("\r", "%0D")
+          .replaceAll("\n", "%0A"),
+    );
+});
 async function watch(page) {
+  // The APK build bakes in a public server URL. UI tests must never contact it
+  // or take a real player's slot: override it BEFORE the client module executes.
+  await page.addInitScript(() => {
+    if (/^https?:$/.test(location.protocol))
+      localStorage.setItem("di-server", location.origin);
+  });
   page.on("pageerror", (e) => {
     errors.push(e.message);
     console.error("PAGE ERROR", e.message);
@@ -142,6 +158,34 @@ try {
   await mobile.locator("#qualityInput").selectOption("balanced");
   await mobile.locator("#sensitivityInput").fill("1.25");
   await mobile.locator("#screenDone").tap();
+  await mobile.locator("#pauseBtn").tap();
+  await mobile.locator("#controls").tap();
+  const card = mobile.locator(".modal-card"),
+    cr = await card.boundingBox();
+  await card.evaluate((el) => (el.scrollTop = 0));
+  const sx = cr.x + cr.width * 0.6,
+    sy = cr.y + cr.height - 60,
+    ey = cr.y + 120;
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ id: 3, x: sx, y: sy }],
+  });
+  for (let i = 1; i <= 5; i++) {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ id: 3, x: sx, y: sy + ((ey - sy) * i) / 5 }],
+    });
+    await mobile.waitForTimeout(30);
+  }
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
+  });
+  await expect
+    .poll(() => card.evaluate((el) => el.scrollTop))
+    .toBeGreaterThan(10);
+  await mobile.locator("#closeModal").tap();
+
   await mobile.locator("#pauseBtn").tap();
   await mobile.locator("#exit").tap();
   await page.bringToFront();

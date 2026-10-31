@@ -14,7 +14,7 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 body {
-  touch-action: none;
+  touch-action: manipulation;
 }
 #menu,
 #hud {
@@ -844,5 +844,24 @@ h1 > span {
     right: 98px;
     width: 46px;
     height: 46px;
+  }
+}
+
+.modal-card {
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+.modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #232c2bf5;
+  padding-bottom: 8px;
+}
+@media (pointer: coarse) {
+  .field input:not([type="range"]),
+  .field select,
+  .withdraw input {
+    font-size: 16px;
   }
 }
