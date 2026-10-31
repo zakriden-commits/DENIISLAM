@@ -1,0 +1,8 @@
+{
+  "appId": "com.deniislam.quarter",
+  "appName": "Deni Islam",
+  "webDir": "dist",
+  "server": { "androidScheme": "https" },
+  "android": { "backgroundColor": "#18221e", "allowMixedContent": false },
+  "plugins": { "SplashScreen": { "launchShowDuration": 0 } }
+}

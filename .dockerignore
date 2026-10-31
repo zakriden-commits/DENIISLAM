@@ -1,0 +1,10 @@
+.git
+node_modules
+dist
+android
+data
+test-results
+playwright-report
+downloads
+*.apk
+.env*

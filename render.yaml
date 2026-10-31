@@ -1,0 +1,28 @@
+# Optional paid deployment. Review Render's pricing before confirming.
+# One instance and a persistent disk are essential for this single-room game.
+services:
+  - type: web
+    name: deni-islam
+    runtime: docker
+    plan: starter
+    numInstances: 1
+    healthCheckPath: /api/health
+    disk:
+      name: deni-islam-saves
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: DATA_DIR
+        value: /data
+      - key: NODE_ENV
+        value: production
+      - key: ROOM_CODE
+        sync: false
+      - key: TURN_URL
+        sync: false
+      - key: TURN_USERNAME
+        sync: false
+      - key: TURN_CREDENTIAL
+        sync: false

@@ -1,0 +1,18 @@
+services:
+  game:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATA_DIR: /data
+      ROOM_CODE: ${ROOM_CODE:?Set ROOM_CODE in .env before exposing the server}
+      TURN_URL: ${TURN_URL:-}
+      TURN_USERNAME: ${TURN_USERNAME:-}
+      TURN_CREDENTIAL: ${TURN_CREDENTIAL:-}
+    ports:
+      - '127.0.0.1:3000:3000'
+    volumes:
+      - saves:/data
+volumes:
+  saves:

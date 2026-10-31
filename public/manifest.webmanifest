@@ -1,0 +1,7 @@
+{
+  "id": "./", "name": "Deni Islam — Двое против квартала", "short_name": "Deni Islam",
+  "description": "Кооперативный 3D-квартал для двух игроков. Один дом. Один большой план.",
+  "lang": "ru", "start_url": "./", "scope": "./", "display": "standalone", "orientation": "landscape",
+  "background_color": "#1b2b22", "theme_color": "#1b2b22",
+  "icons": [{"src":"icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},{"src":"icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}]
+}

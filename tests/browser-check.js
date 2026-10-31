@@ -1,0 +1,12 @@
+import { chromium as playwright } from '@playwright/test';
+import chromium from '@sparticuz/chromium';
+import { mkdir } from 'node:fs/promises';
+await mkdir('test-results',{recursive:true});
+const browser=await playwright.launch({executablePath:await chromium.executablePath(),args:[...chromium.args,'--enable-unsafe-swiftshader'],headless:true});
+const page=await browser.newPage({viewport:{width:1440,height:900}});
+const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE ERROR',e.message);});page.on('console',msg=>{if(msg.type()==='error')console.error('CONSOLE',msg.text());});
+await page.goto('http://127.0.0.1:3000');await page.locator('#menu').waitFor({state:'visible'});await page.screenshot({path:'test-results/menu.png'});
+await page.locator('#play').click();await page.locator('#hud').waitFor({state:'visible'});await page.waitForTimeout(3500);await page.screenshot({path:'test-results/game.png'});
+await page.keyboard.down('KeyW');await page.waitForTimeout(800);await page.keyboard.up('KeyW');await page.locator('#pauseBtn').click();await page.locator('#exit').click();
+await page.setViewportSize({width:390,height:844});await page.screenshot({path:'test-results/mobile-menu.png'});
+await browser.close();if(errors.length)process.exitCode=1;console.log('Browser errors:',errors.length);

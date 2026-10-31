@@ -1,0 +1,16 @@
+node_modules/
+dist/
+data/
+.env
+.env.*
+!.env.example
+*.apk
+*.aab
+*.log
+playwright-report/
+test-results/
+android/.gradle/
+android/local.properties
+android/**/build/
+android/app/src/main/assets/public/
+.DS_Store
