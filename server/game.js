@@ -1,109 +1,94 @@
-import { WORLD, ITEMS, dist, inside, blocked } from "../src/shared.js";
 import { randomUUID } from "node:crypto";
+import {
+  WORLD,
+  POIS,
+  NODES,
+  TREES,
+  ITEMS,
+  RECIPES,
+  dist,
+  blocked,
+  lineClear,
+  heightAt,
+  random,
+} from "../src/shared.js";
+const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 export class Game {
   constructor(saved = {}) {
+    if (saved.schema !== 3) saved = {};
     this.players = new Map();
     this.profiles = saved.profiles || {};
-    this.door = true;
-    this.time = 0;
+    this.time = saved.time || 0;
     this.tickId = 0;
-    this.bankCash = saved.bankCash ?? 180000;
-    this.restockAt = 0;
-    this.npcs = [];
     this.events = [];
-    for (let i = 0; i < 16; i++)
+    this.depleted = saved.depleted || {};
+    this.stash = saved.stash || {};
+    this.drops = saved.drops || [];
+    this.fires = saved.fires || [{ id: "base-fire", x: 0, z: 49, fuel: 0 }];
+    this.radio = saved.radio || { part: 0, scrap: 0, fuel: 0, active: false };
+    this.rng = random(821);
+    this.npcs = [];
+    for (let i = 0; i < 16; i++) {
+      const type = i < 8 ? "wolf" : i < 13 ? "deer" : "bandit",
+        a = i * 2.3,
+        r = 90 + (i % 5) * 35;
+      const x = Math.sin(a) * r;
+      let z = Math.cos(a) * r - 65;
+      if (dist({ x, z }, WORLD.camp) < 70) z -= 110;
       this.npcs.push({
-        id: "civil" + i,
-        type: i % 4 === 0 ? "elder" : i % 4 === 1 ? "rough" : "civil",
-        x: -44 + i * 5.6,
-        z: i % 2 ? 2 : -7,
-        hp: 100,
+        id: "npc" + i,
+        type,
+        x,
+        z,
+        homeX: x,
+        homeZ: z,
+        hp: type === "bandit" ? 120 : type === "wolf" ? 85 : 65,
         yaw: 0,
+        mode: "idle",
+        lastAttack: 0,
+        deadAt: 0,
+        harvested: false,
         target: null,
-        dead: 0,
       });
-    this.npcs.push(
-      { id: "guard0", type: "guard", x: -6, z: -20, hp: 140, yaw: 0, dead: 0 },
-      { id: "guard1", type: "guard", x: 6, z: -27, hp: 140, yaw: 0, dead: 0 },
-    );
-    this.npcs.push(
-      {
-        id: "seller",
-        type: "seller",
-        x: 24,
-        z: 20,
-        hp: 100,
-        yaw: Math.PI,
-        dead: 0,
-      },
-      {
-        id: "cashier",
-        type: "cashier",
-        x: 7,
-        z: -28,
-        hp: 100,
-        yaw: 0,
-        dead: 0,
-      },
-    );
+    }
   }
-  add(token, role) {
-    if (this.players.has(token))
-      throw Error("Этот профиль уже в игре в другом окне.");
+  add(id, role) {
+    if (this.players.has(id)) throw Error("Этот профиль уже подключён.");
     if (this.players.size >= 2)
-      throw Error(
-        [...this.players.values()].some((p) => p.connected === false)
-          ? "Сервер заполнен: места держатся до 90 секунд после обрыва. Вернитесь из прежнего профиля или подождите."
-          : "Сервер заполнен: два игрока уже в городе.",
-      );
-    const saved = this.profiles[token];
-    const slot = saved?.slot ?? (role === "islam" ? 1 : 0);
+      throw Error("Два места заняты или временно зарезервированы.");
+    const saved = this.profiles[id],
+      slot = saved?.slot ?? (role === "islam" ? 1 : 0);
     if ([...this.players.values()].some((p) => p.slot === slot))
-      throw Error("Этот персонаж уже в игре. Выберите второго.");
-    const spawn = WORLD.spawns[slot];
+      throw Error("Этот выживший уже в лесу. Выберите второго.");
     const p = {
-      connected: true,
-      lastInputTime: this.time,
-      id: token,
       slot,
       name: slot ? "Islam" : "Deni",
-      x: spawn.x,
-      z: spawn.z,
-      yaw: Math.PI,
+      ...WORLD.spawns[slot],
+      yaw: 0,
       hp: 100,
       stamina: 100,
-      balance: 200,
-      inventory: [],
-      locker: [],
-      selected: "fist",
-      ammo: 0,
-      mag: { pistol: 0, smg: 0 },
-      bagCash: 0,
-      bundles: 0,
-      wanted: 0,
-      lastSeen: 0,
-      lastShot: -100,
-      job: null,
-      loot: null,
-      sleep: 3,
-      input: { x: 0, z: 0, run: false, aim: Math.PI },
+      hunger: 85,
+      thirst: 85,
+      warmth: 80,
+      inventory: { axe: 1, food: 2, water: 2, wood: 2, cloth: 2 },
+      selected: "axe",
+      mag: { pistol: 0, shotgun: 0 },
+      kills: 0,
       ...saved,
-    };
-    // Always rejoin at your own bed; offline players cannot remain in combat.
-    Object.assign(p, {
-      id: token,
-      slot,
-      name: slot ? "Islam" : "Deni",
-      x: spawn.x,
-      z: spawn.z,
-      hp: Math.max(50, p.hp),
-      wanted: 0,
+      airY: 0,
+      vy: 0,
+      id,
+      connected: true,
+      lastInputTime: this.time,
+      input: { x: 0, z: 0, run: false, aim: Math.PI, pitch: 0 },
       loot: null,
-      job: null,
-      input: { x: 0, z: 0, run: false, aim: Math.PI },
-      sleep: 3,
-    });
-    this.players.set(token, p);
+      reload: null,
+      lastShot: -100,
+      protection: this.time + 4,
+    };
+    if (!Number.isFinite(p.x) || Math.abs(p.x) > 494 || Math.abs(p.z) > 494)
+      Object.assign(p, WORLD.spawns[slot]);
+    this.players.set(id, p);
     return p;
   }
   remove(id) {
@@ -117,556 +102,567 @@ export class Game {
     return Object.fromEntries(
       [
         "slot",
+        "x",
+        "z",
+        "yaw",
         "hp",
         "stamina",
-        "balance",
+        "hunger",
+        "thirst",
+        "warmth",
         "inventory",
-        "locker",
         "selected",
-        "ammo",
         "mag",
-        "bagCash",
-        "bundles",
-        "handCash",
+        "kills",
       ].map((k) => [k, structuredClone(p[k])]),
     );
   }
   save() {
     for (const p of this.players.values())
       this.profiles[p.id] = this.savePlayer(p);
-    return { profiles: this.profiles, bankCash: this.bankCash };
+    return {
+      schema: 3,
+      time: this.time,
+      profiles: this.profiles,
+      depleted: this.depleted,
+      stash: this.stash,
+      fires: this.fires,
+      drops: this.drops,
+      radio: this.radio,
+    };
   }
   tell(p, text) {
     this.events.push({ to: p.id, text });
   }
-  crime(p, amount = 1) {
-    p.wanted = Math.min(5, Math.max(1, p.wanted + amount));
-    p.lastSeen = this.time;
+  broadcast(text) {
+    for (const p of this.players.values()) this.tell(p, text);
   }
-  canSee(n, p, range = 13) {
-    if (n.dead || dist(n, p) > range) return false;
-    const dx = p.x - n.x,
-      dz = p.z - n.z,
-      d = Math.hypot(dx, dz) || 1;
-    if ((Math.sin(n.yaw) * dx + Math.cos(n.yaw) * dz) / d < 0.25) return false;
-    // Building walls occlude sight, including a closed home door.
-    const steps = Math.ceil(d * 3);
-    for (let i = 1; i < steps; i++)
-      if (blocked(n.x + (dx * i) / steps, n.z + (dz * i) / steps, this.door))
-        return false;
-    return true;
+  give(p, item, n) {
+    p.inventory[item] = (p.inventory[item] || 0) + n;
+    if (p.inventory[item] <= 0) delete p.inventory[item];
   }
-  action(p, msg) {
-    if (!p || p.sleep > 0 || p.connected === false) return;
-    const near = (pos, r = 3.4) => dist(p, pos) < r;
-    if (msg.type === "input") {
+  has(p, cost) {
+    return Object.entries(cost).every(([k, n]) => (p.inventory[k] || 0) >= n);
+  }
+  pay(p, cost) {
+    for (const [k, n] of Object.entries(cost)) this.give(p, k, -n);
+  }
+  nearFire(p) {
+    return this.fires.find((f) => f.fuel > 0 && dist(p, f) < 9);
+  }
+  find(p, id) {
+    let n = NODES.find((n) => n.id === id);
+    if (!n) {
+      const t = TREES.find((t) => t.id === id);
+      if (t) n = { ...t, type: "wood" };
+    }
+    if (!n)
+      n = this.drops.find((d) => d.id === id) && {
+        ...this.drops.find((d) => d.id === id),
+        type: "drop",
+      };
+    if (!n) {
+      const a = this.npcs.find(
+        (n) => n.id === id && n.hp <= 0 && !n.harvested && n.type !== "bandit",
+      );
+      if (a) n = { ...a, type: "carcass" };
+    }
+    if (id === "river" && Math.abs(p.x - WORLD.riverX(p.z)) < 7)
+      n = { id, type: "water", x: p.x, z: p.z };
+    return n && dist(p, n) < 3.8 && !(this.depleted[id] > this.time) ? n : null;
+  }
+  action(p, m) {
+    if (!p || p.connected === false) return;
+    if (m.type === "input") {
       p.lastInputTime = this.time;
       p.input = {
-        x: Math.max(-1, Math.min(1, Number(msg.x) || 0)),
-        z: Math.max(-1, Math.min(1, Number(msg.z) || 0)),
-        run: !!msg.run,
-        aim: Number.isFinite(msg.aim) ? msg.aim : 0,
-        pitch: Number.isFinite(msg.pitch)
-          ? Math.max(-1.3, Math.min(1.3, msg.pitch))
-          : 0,
+        x: clamp(Number(m.x) || 0, -1, 1),
+        z: clamp(Number(m.z) || 0, -1, 1),
+        aim: Number.isFinite(m.aim) ? m.aim : 0,
+        pitch: clamp(Number(m.pitch) || 0, -1.3, 1.3),
+        run: !!m.run,
       };
       return;
     }
-    if (msg.type === "select") {
+    if (m.type === "jump") {
+      if (p.airY === 0 && p.stamina >= 12) {
+        p.vy = 5.2;
+        p.stamina -= 12;
+      }
+      return;
+    }
+    if (m.type === "select") {
       if (
-        msg.item === "fist" ||
-        p.inventory.includes(msg.item) ||
-        (msg.item === "cash" && p.bundles > 0)
+        m.item === "fist" ||
+        (ITEMS[m.item]?.kind === "weapon" && p.inventory[m.item] > 0)
       ) {
-        p.selected = msg.item;
+        p.selected = m.item;
         p.loot = null;
       }
       return;
     }
-    if (
-      msg.type === "door" &&
-      near({ x: WORLD.home.doorX, z: WORLD.home.doorZ })
-    ) {
-      this.door = !this.door;
-      this.tell(
-        p,
-        this.door
-          ? "Дверь открыта."
-          : "Дверь закрыта. Если вас не видели — розыск скоро спадёт.",
-      );
-    }
-    if (msg.type === "buy") {
-      if (!inside(p, WORLD.shop))
-        return this.tell(p, "Покупки доступны у продавца в «Арсенале».");
-      const item = ITEMS[msg.item];
-      if (!item) return;
-      if (p.balance < item.price)
-        return this.tell(p, "Не хватает денег. На складе есть подработка.");
-      if (
-        !["ammo", "medkit"].includes(msg.item) &&
-        p.inventory.includes(msg.item)
-      )
-        return this.tell(p, "У вас уже есть этот предмет.");
-      if (msg.item !== "ammo" && p.inventory.length >= 10)
-        return this.tell(p, "Инвентарь полон.");
-      p.balance -= item.price;
-      if (msg.item === "ammo") p.ammo += 24;
-      else p.inventory.push(msg.item);
-      this.tell(p, "Куплено: " + item.name);
-      return;
-    }
-    if (msg.type === "reload") {
-      const gun = ITEMS[p.selected];
-      if (!gun?.mag) return this.tell(p, "Сначала возьмите оружие.");
-      if (p.reload) return;
-      if (p.mag[p.selected] >= gun.mag) return;
-      if (p.ammo <= 0)
-        return this.tell(p, "Нет патронов. Купите патроны в магазине.");
-      p.reload = { item: p.selected, remaining: 1.6 };
-      this.tell(p, "Перезарядка…");
-      return;
-    }
-    if (msg.type === "shoot") {
-      if (p.reload || p.job?.stage === "carry") return;
-      const gun = ITEMS[p.selected];
-      const armed = !!gun?.mag;
-      if (!armed && p.selected !== "fist") return;
-      if (this.time - p.lastShot < (armed ? gun.cooldown : 0.6)) return;
-      if (armed && !p.mag[p.selected])
-        return this.tell(
-          p,
-          p.ammo
-            ? "Магазин пуст. Нажмите R / ↻."
-            : "Купите патроны в магазине.",
-        );
-      p.lastShot = this.time;
-      p.shotUntil = this.time + 0.13;
-      if (armed) {
-        p.mag[p.selected]--;
-        this.crime(p, 0);
-      }
-      const aim = p.input.aim;
-      p.yaw = aim;
-      // Only NPCs are eligible hits. Friendly fire is impossible on the server.
-      const targets = this.npcs
-        .filter(
-          (n) =>
-            !n.dead &&
-            this.canSee({ ...p, yaw: aim }, n, armed ? gun.range : 2.1),
-        )
-        .map((n) => ({
-          n,
-          d: dist(p, n),
-          a:
-            (Math.sin(aim) * (n.x - p.x) + Math.cos(aim) * (n.z - p.z)) /
-            (dist(p, n) || 1),
-        }))
-        .filter(
-          (v) =>
-            v.a > Math.cos(armed ? Math.atan2(0.42, v.d) + 0.012 : 0.85) &&
-            (!armed ||
-              Math.abs(Math.atan2(1.1 - 1.62, v.d) - (p.input.pitch || 0)) <
-                Math.atan2(0.8, v.d) + 0.015),
-        )
-        .sort((a, b) => a.d - b.d);
-      const target = targets[0]?.n;
-      if (target) {
-        target.hp -= armed ? gun.damage : 18;
-        target.hurt = this.time + 0.2;
-        this.crime(p, 0);
-        if (target.hp <= 0) {
-          target.dead = 25;
-          this.crime(p, 1);
-        }
-      }
-      return;
-    }
-    if (msg.type === "job") {
-      if (p.job) return;
-      if (!near(WORLD.job, 5))
-        return this.tell(p, "Подойдите к грузчику у склада.");
-      p.job = {
-        stage: "pickup",
-        reward: 140 + Math.floor(Math.random() * 380),
-        count: 0,
+    if (m.type === "gatherStart") {
+      const n = this.find(p, m.id);
+      if (!n) return this.tell(p, "Подойдите ближе к припасам.");
+      p.loot = {
+        id: n.id,
+        type: n.type,
+        elapsed: 0,
+        duration: n.type === "wood" ? 3.5 : n.type === "crate" ? 3 : 1.8,
       };
-      this.tell(
-        p,
-        "Подработка: возьмите ящик у склада, отнесите к фургону. Нужно 3 ящика.",
-      );
       return;
     }
-    if (msg.type === "interactJob" && p.job) {
-      if (p.job.stage === "pickup" && near(WORLD.job, 4)) {
-        p.job.stage = "carry";
-        this.tell(p, "Ящик в руках. Несите его к фургону.");
-      } else if (p.job.stage === "carry" && near(WORLD.truck, 4)) {
-        p.job.count++;
-        if (p.job.count >= 3) {
-          p.balance += p.job.reward;
-          this.tell(p, `Работа выполнена! +${p.job.reward} ₽`);
-          p.job = null;
-          p.nextOffer = this.time + 60;
-        } else {
-          p.job.stage = "pickup";
-          this.tell(p, `Доставлено ${p.job.count}/3. Возьмите ещё ящик.`);
-        }
-      }
-      return;
-    }
-    if (msg.type === "lootStart") {
-      if (!near(WORLD.loot, 3))
-        return this.tell(p, "Подойдите к пачкам денег в глубине банка.");
-      const bag = p.selected === "bag" && p.inventory.includes("bag");
-      if (!bag && p.selected !== "fist")
-        return this.tell(p, "Уберите оружие или выберите сумку.");
-      if (!bag && p.bundles >= 5)
-        return this.tell(
-          p,
-          "В руках уже пять пачек. Перечислите их на баланс.",
-        );
-      if (bag && p.bagCash >= 50000) return this.tell(p, "Сумка полна.");
-      if (this.bankCash <= 0)
-        return this.tell(p, "Хранилище пусто. Деньги привезут позже.");
-      p.loot = { elapsed: 0, duration: bag ? 30 : 15, bag };
-      return;
-    }
-    if (msg.type === "lootStop") {
+    if (m.type === "gatherStop") {
       p.loot = null;
       return;
     }
-    if (msg.type === "deposit") {
-      if (p.selected === "cash" && p.bundles) {
-        const value = p.handCash || 0;
-        p.balance += value;
-        p.bundles = 0;
-        p.handCash = 0;
-        p.selected = "fist";
-        this.tell(p, `Перечислено ${value} ₽.`);
-      } else if (p.selected === "bag") {
-        const amount = Math.max(
-          0,
-          Math.min(p.bagCash, Math.floor(Number(msg.amount) || p.bagCash)),
+    if (m.type === "use") {
+      if (!(p.inventory[m.item] > 0)) return;
+      const effects = {
+        berries: ["hunger", 15],
+        food: ["hunger", 32],
+        cooked: ["hunger", 48],
+        water: ["thirst", 45],
+        medkit: ["hp", 55],
+        bandage: ["hp", 24],
+        raw: ["hunger", 15],
+      };
+      const effect = effects[m.item];
+      if (!effect) return;
+      if (p[effect[0]] >= 99) return this.tell(p, "Пока не требуется.");
+      this.give(p, m.item, -1);
+      p[effect[0]] = clamp(p[effect[0]] + effect[1], 0, 100);
+      if (m.item === "raw") {
+        p.hp -= 8;
+        this.tell(p, "Сырое мясо опасно. Лучше приготовить на костре.");
+      } else this.tell(p, "Использовано: " + ITEMS[m.item].name);
+      return;
+    }
+    if (m.type === "craft") {
+      const r = RECIPES[m.recipe];
+      if (!r) return;
+      if (!this.has(p, r.cost)) return this.tell(p, "Недостаточно материалов.");
+      if (r.fire && !this.nearFire(p))
+        return this.tell(p, "Нужен горящий костёр рядом.");
+      if (r.result === "campfire") {
+        if (this.fires.length >= 12)
+          return this.tell(p, "В районе уже достаточно костров.");
+        if (this.fires.some((f) => dist(p, f) < 8) || blocked(p.x, p.z - 2))
+          return this.tell(p, "Отойдите от других костров и стен.");
+        this.pay(p, r.cost);
+        this.fires.push({ id: randomUUID(), x: p.x, z: p.z - 2, fuel: 180 });
+      } else {
+        if (ITEMS[r.result]?.kind === "weapon" && p.inventory[r.result])
+          return this.tell(p, "Такое оружие уже есть.");
+        this.pay(p, r.cost);
+        this.give(p, r.result, 1);
+      }
+      this.tell(p, "Создано: " + r.name);
+      return;
+    }
+    if (m.type === "fire") {
+      const f = this.fires.find((f) => f.id === m.id && dist(f, p) < 4);
+      if (!f) return;
+      if (!(p.inventory.wood > 0)) return this.tell(p, "Нужна древесина.");
+      this.give(p, "wood", -1);
+      f.fuel = Math.min(900, f.fuel + 150);
+      this.tell(p, "Дрова добавлены. Здесь можно согреться и готовить.");
+      return;
+    }
+    if (m.type === "stash") {
+      if (dist(p, WORLD.stash) > 4 || !ITEMS[m.item]) return;
+      const amount = clamp(Math.floor(Number(m.amount) || 1), 1, 99);
+      if (m.direction === "store") {
+        const n = Math.min(amount, p.inventory[m.item] || 0);
+        if (n <= 0) return;
+        this.give(p, m.item, -n);
+        this.stash[m.item] = (this.stash[m.item] || 0) + n;
+        if (p.selected === m.item && !p.inventory[m.item]) p.selected = "fist";
+      } else {
+        const n = Math.min(amount, this.stash[m.item] || 0);
+        if (n <= 0) return;
+        this.stash[m.item] -= n;
+        this.give(p, m.item, n);
+      }
+      return;
+    }
+    if (m.type === "radio") {
+      if (
+        dist(
+          p,
+          POIS.find((x) => x.id === "radio"),
+        ) > 6
+      )
+        return;
+      if (this.radio.active)
+        return this.tell(p, "Маяк работает. Сигнал ушёл за перевал.");
+      for (const [k, max] of Object.entries({ part: 3, scrap: 4, fuel: 1 })) {
+        const n = Math.min(max - this.radio[k], p.inventory[k] || 0);
+        this.radio[k] += n;
+        this.give(p, k, -n);
+      }
+      if (
+        this.radio.part === 3 &&
+        this.radio.scrap === 4 &&
+        this.radio.fuel === 1
+      ) {
+        this.radio.active = true;
+        this.broadcast(
+          "СВЯЗЬ ВОССТАНОВЛЕНА. Вы передали координаты. Север услышал вас.",
         );
-        p.bagCash -= amount;
-        p.balance += amount;
-        this.tell(p, `Из сумки перечислено ${amount} ₽.`);
+      } else
+        this.tell(
+          p,
+          `Ремонт: детали ${this.radio.part}/3 · металл ${this.radio.scrap}/4 · топливо ${this.radio.fuel}/1`,
+        );
+      return;
+    }
+    if (m.type === "reload") {
+      const gun = ITEMS[p.selected];
+      if (!gun?.mag || p.reload) return;
+      if (p.mag[p.selected] >= gun.mag) return;
+      if (!(p.inventory.ammo > 0))
+        return this.tell(p, "Нет патронов. Ищите на блокпосту и лесопилке.");
+      p.reload = { item: p.selected, left: 1.9 };
+      return;
+    }
+    if (m.type === "shoot") {
+      const w = ITEMS[p.selected];
+      if (
+        w?.kind !== "weapon" ||
+        p.reload ||
+        this.time - p.lastShot < w.cooldown
+      )
+        return;
+      if (w.mag && !p.mag[p.selected])
+        return this.tell(
+          p,
+          p.inventory.ammo ? "Магазин пуст — перезарядите." : "Нет патронов.",
+        );
+      p.lastShot = this.time;
+      p.loot = null;
+      if (w.mag) p.mag[p.selected]--;
+      const targets = this.npcs
+        .filter((n) => n.hp > 0 && dist(p, n) < w.range && lineClear(p, n))
+        .filter((n) => {
+          const d = dist(p, n),
+            a = Math.atan2(n.x - p.x, n.z - p.z),
+            angle = Math.atan2(
+              Math.sin(a - p.input.aim),
+              Math.cos(a - p.input.aim),
+            );
+          const vertical = Math.atan2(
+            heightAt(n.x, n.z) +
+              (n.type === "bandit" ? 1.1 : 0.65) -
+              heightAt(p.x, p.z) -
+              1.65,
+            d,
+          );
+          return (
+            Math.abs(angle) < (w.mag ? Math.atan2(0.6, d) + 0.018 : 0.8) &&
+            (!w.mag ||
+              Math.abs(vertical - p.input.pitch) < Math.atan2(0.9, d) + 0.025)
+          );
+        })
+        .sort((a, b) => dist(a, p) - dist(b, p));
+      if (targets[0]) {
+        const n = targets[0];
+        n.hp -= w.damage;
+        n.hurt = this.time + 0.3;
+        if (n.hp <= 0) {
+          n.hp = 0;
+          n.deadAt = this.time;
+          p.kills++;
+          this.tell(
+            p,
+            n.type === "bandit"
+              ? "Мародёр обезврежен."
+              : "Животное повержено. Можно собрать мясо.",
+          );
+        }
       }
+      if (w.mag)
+        for (const n of this.npcs)
+          if (n.type === "wolf" && n.hp > 0 && dist(n, p) < 75) {
+            n.target = { x: p.x, z: p.z };
+            n.alert = this.time + 12;
+          }
+    }
+  }
+  finish(p, n) {
+    if (!n) return;
+    if (n.type === "drop") {
+      const d = this.drops.find((d) => d.id === n.id);
+      if (!d) return;
+      for (const [k, v] of Object.entries(d.inventory)) this.give(p, k, v);
+      this.drops = this.drops.filter((d) => d.id !== n.id);
+      this.tell(p, "Рюкзак подобран.");
       return;
     }
-    if (msg.type === "heal" && p.inventory.includes("medkit")) {
-      p.hp = Math.min(100, p.hp + 60);
-      p.inventory.splice(p.inventory.indexOf("medkit"), 1);
-      if (p.selected === "medkit") p.selected = "fist";
+    if (n.type === "carcass") {
+      const npc = this.npcs.find((a) => a.id === n.id);
+      if (!npc || npc.harvested) return;
+      npc.harvested = true;
+      this.give(p, "raw", 2);
+      this.give(p, "cloth", 1);
+      this.tell(p, "Добыто: мясо ×2, шкура/ткань ×1.");
       return;
     }
-    if (msg.type === "locker") {
-      if (!near(WORLD.lockers[p.slot], 3))
-        return this.tell(p, "Это не ваш шкаф или вы слишком далеко.");
-      const i = Number(msg.index);
-      if (!Number.isInteger(i) || i < 0) return;
-      if (msg.direction === "store") {
-        if (p.locker.length >= 15) return this.tell(p, "В шкафу уже 15 вещей.");
-        const item = p.inventory[i];
-        if (!item) return;
-        p.locker.push({
-          id: randomUUID(),
-          item,
-          loaded: p.mag[item] || 0,
-          cash: item === "bag" ? p.bagCash : 0,
-        });
-        p.inventory.splice(i, 1);
-        if (item === "bag") p.bagCash = 0;
-        if (p.mag[item] !== undefined) p.mag[item] = 0;
-        if (p.selected === item) p.selected = "fist";
-      } else if (msg.direction === "take" && p.inventory.length < 10) {
-        const entry = p.locker[i];
-        if (!entry) return;
-        if (entry.item !== "medkit" && p.inventory.includes(entry.item))
-          return this.tell(p, "Такой предмет уже в инвентаре.");
-        p.inventory.push(entry.item);
-        if (entry.item === "bag") p.bagCash = entry.cash;
-        if (p.mag[entry.item] !== undefined) p.mag[entry.item] = entry.loaded;
-        p.locker.splice(i, 1);
-      }
-      return;
-    }
+    const rewards =
+      n.type === "wood"
+        ? { wood: 2 }
+        : n.type === "stone"
+          ? { stone: 2 }
+          : n.type === "berry"
+            ? { berries: 1 }
+            : n.type === "water"
+              ? { dirtywater: 2 }
+              : n.type === "part"
+                ? { part: 1 }
+                : n.type === "supply"
+                  ? { food: 2, water: 1, cloth: 2 }
+                  : n.site === "mill"
+                    ? { shotgun: 1, ammo: 12, scrap: 2 }
+                    : n.site === "checkpoint"
+                      ? { pistol: 1, ammo: 16, medkit: 1 }
+                      : n.site === "pump"
+                        ? { fuel: 1, scrap: 2 }
+                        : n.site === "bunker"
+                          ? { ammo: 12, medkit: 1, scrap: 3 }
+                          : { cloth: 2, food: 1, scrap: 1 };
+    for (const [k, v] of Object.entries(rewards)) this.give(p, k, v);
+    if (n.type !== "water")
+      this.depleted[n.id] =
+        this.time +
+        (n.type === "part"
+          ? 864000
+          : ["wood", "stone", "berry"].includes(n.type)
+            ? 240
+            : 600);
+    this.tell(
+      p,
+      Object.entries(rewards)
+        .map(([k, v]) => `${ITEMS[k].name} +${v}`)
+        .join(" · "),
+    );
   }
   step(dt) {
     this.time += dt;
     this.tickId++;
-    if (this.bankCash < 180000 && this.time > this.restockAt) {
-      this.bankCash = Math.min(180000, this.bankCash + 5000);
-      this.restockAt = this.time + 120;
-    }
+    const hour = (5.5 + this.time / 45) % 24,
+      night = hour < 7 || hour > 19;
+    for (const f of this.fires) f.fuel = Math.max(0, f.fuel - dt);
+    this.drops = this.drops.filter((d) => d.expires > this.time);
     for (const p of this.players.values()) {
       if (p.connected === false) continue;
-      if (this.time - (p.lastInputTime ?? this.time) > 0.5) {
+      if (this.time - p.lastInputTime > 0.5) {
         p.input.x = 0;
         p.input.z = 0;
         p.input.run = false;
       }
-      const wasSleeping = p.sleep > 0;
-      p.sleep = Math.max(0, p.sleep - dt);
-      if (p.sleep > 0) continue;
-      if (wasSleeping) {
-        p.x = WORLD.spawns[p.slot].x + 2.5;
-        p.z = WORLD.spawns[p.slot].z + 1;
-      }
-      const input = p.input,
-        len = Math.hypot(input.x, input.z),
-        running = input.run && p.stamina > 1 && p.job?.stage !== "carry";
-      const speed = p.job?.stage === "carry" ? 2.5 : running ? 7 : 4;
-      if (len > 0.05) {
-        const dx = (input.x / Math.max(1, len)) * speed * dt,
-          dz = (input.z / Math.max(1, len)) * speed * dt;
-        if (!blocked(p.x + dx, p.z, this.door)) p.x += dx;
-        if (!blocked(p.x, p.z + dz, this.door)) p.z += dz;
-        p.yaw = Math.atan2(input.x, input.z);
-      }
-      if (len <= 0.05) p.yaw = input.aim;
+      const len = Math.hypot(p.input.x, p.input.z),
+        run = p.input.run && p.stamina > 2 && len > 0.05,
+        speed = run ? 7 : 3.9;
+      p.vy -= 12 * dt;
+      p.airY = Math.max(0, p.airY + p.vy * dt);
+      if (p.airY === 0) p.vy = 0;
       p.moving = len > 0.05;
-      p.stamina = Math.max(
+      p.running = run;
+      p.yaw = p.input.aim;
+      if (len > 0.05) {
+        const dx = (p.input.x / Math.max(1, len)) * speed * dt,
+          dz = (p.input.z / Math.max(1, len)) * speed * dt;
+        if (!blocked(p.x + dx, p.z)) p.x += dx;
+        if (!blocked(p.x, p.z + dz)) p.z += dz;
+      }
+      p.stamina = clamp(p.stamina + (run ? -17 : 12) * dt, 0, 100);
+      p.hunger = clamp(p.hunger - (run ? 0.14 : 0.075) * dt, 0, 100);
+      p.thirst = clamp(p.thirst - (run ? 0.21 : 0.12) * dt, 0, 100);
+      const sheltered = dist(p, WORLD.camp) < 9,
+        fire = this.nearFire(p);
+      p.warmth = clamp(
+        p.warmth +
+          (fire
+            ? 3
+            : sheltered
+              ? 0.1
+              : (night ? -0.24 : -0.1) -
+                (Math.sin(this.time / 140) > 0.7 ? 0.18 : 0)) *
+            dt,
         0,
-        Math.min(100, p.stamina + (running && len > 0.05 ? -18 : 13) * dt),
+        100,
       );
+      if (p.hunger < 5 || p.thirst < 5 || p.warmth < 7)
+        p.hp -= (p.thirst < 5 ? 1.1 : 0.6) * dt;
+      if (fire && p.hunger > 50 && p.hp < 100)
+        p.hp = Math.min(100, p.hp + 0.15 * dt);
       if (p.reload) {
-        p.reload.remaining -= dt;
-        if (p.reload.remaining <= 0) {
-          const item = p.reload.item,
-            take = Math.min(ITEMS[item].mag - p.mag[item], p.ammo);
-          p.mag[item] += take;
-          p.ammo -= take;
+        p.reload.left -= dt;
+        if (p.reload.left <= 0) {
+          const n = Math.min(
+            ITEMS[p.reload.item].mag - p.mag[p.reload.item],
+            p.inventory.ammo || 0,
+          );
+          p.mag[p.reload.item] += n;
+          this.give(p, "ammo", -n);
           p.reload = null;
         }
       }
       if (p.loot) {
-        if (
-          dist(p, WORLD.loot) > 3 ||
-          len > 0.1 ||
-          p.selected !== (p.loot.bag ? "bag" : "fist")
-        )
-          p.loot = null;
+        const n = this.find(p, p.loot.id);
+        if (!n || len > 0.1) p.loot = null;
         else {
           p.loot.elapsed += dt;
           if (p.loot.elapsed >= p.loot.duration) {
-            const amount = Math.min(
-              this.bankCash,
-              p.loot.bag
-                ? 50000 - p.bagCash
-                : 2500 + Math.floor(Math.random() * 7500),
-            );
-            this.bankCash -= amount;
-            if (p.loot.bag) p.bagCash += amount;
-            else {
-              p.bundles = 5;
-              p.handCash = (p.handCash || 0) + amount;
-            }
-            this.crime(p, 0);
-            this.tell(
-              p,
-              `Взято ${amount} ₽. Выберите ${p.loot.bag ? "сумку" : "пачки денег"}, чтобы перечислить.`,
-            );
+            this.finish(p, n);
             p.loot = null;
           }
         }
       }
-      let seen = false;
-      for (const n of this.npcs) {
-        if (n.dead) continue;
-        if (
-          (n.type === "guard" || n.type === "cashier") &&
-          inside(p, WORLD.bank) &&
-          this.canSee(n, p, 17) &&
-          (ITEMS[p.selected]?.mag || p.loot || p.wanted)
-        ) {
-          this.crime(p, 0);
-          seen = true;
-        }
-        if (n.type === "police" && p.wanted && this.canSee(n, p, 24)) {
-          seen = true;
-          p.lastSeen = this.time;
-        }
-      }
-      if (p.wanted && !seen && this.time - p.lastSeen > 18) {
-        p.wanted--;
-        p.lastSeen = this.time;
-        this.tell(
-          p,
-          p.wanted
-            ? "Погоня ослабевает. Не попадайтесь на глаза."
-            : "Розыск снят. Вы чисты.",
-        );
-      }
-      if (!p.job && (p.nextOffer ?? 25) < this.time) {
-        const nearby = this.npcs.find(
-          (n) =>
-            !n.dead && ["civil", "rough"].includes(n.type) && dist(n, p) < 12,
-        );
-        if (nearby) {
-          nearby.target = { x: p.x, z: p.z };
-          p.nextOffer = this.time + 65;
-          this.tell(
-            p,
-            "Эй, нужна подработка? У склада нужны руки. За три ящика хорошо платят.",
-          );
-        }
-      }
       if (p.hp <= 0) {
+        this.drops.push({
+          id: randomUUID(),
+          x: p.x,
+          z: p.z,
+          name: p.name,
+          inventory: { ...p.inventory },
+          expires: this.time + 1200,
+        });
         Object.assign(p, {
-          hp: 100,
-          inventory: [],
-          selected: "fist",
-          mag: { pistol: 0, smg: 0 },
-          ammo: 0,
-          bagCash: 0,
-          bundles: 0,
-          handCash: 0,
-          wanted: 0,
-          loot: null,
-          job: null,
-          reload: null,
-          sleep: 3,
           ...WORLD.spawns[p.slot],
+          hp: 100,
+          stamina: 100,
+          hunger: 65,
+          thirst: 65,
+          warmth: 65,
+          inventory: {},
+          selected: "fist",
+          mag: { pistol: 0, shotgun: 0 },
+          reload: null,
+          loot: null,
+          protection: this.time + 6,
         });
         this.tell(
           p,
-          "Вас вырубили. Вещи потеряны, но баланс и личный шкаф сохранены.",
+          "Вы очнулись в убежище. Рюкзак остался на месте гибели на 20 минут.",
         );
       }
     }
-    const wanted = [...this.players.values()].filter(
-      (p) => p.connected !== false && p.wanted > 0,
-    );
-    if (
-      wanted.length &&
-      this.npcs.filter((n) => n.type === "police" && !n.dead).length <
-        Math.max(...wanted.map((p) => p.wanted)) + 1 &&
-      this.tickId % 80 === 0
-    ) {
-      this.npcs.push({
-        id: "police" + this.tickId,
-        type: "police",
-        x: 17,
-        z: -4,
-        hp: 120,
-        yaw: Math.PI,
-        dead: 0,
-      });
-      for (const p of wanted)
-        this.tell(p, "Полиция прибыла в квартал. Уходите из поля зрения!");
-    }
     for (const n of this.npcs) {
-      if (n.dead) {
-        n.dead -= dt;
-        if (n.dead <= 0) {
-          if (n.type === "police") {
-            n.remove = true;
-            continue;
-          }
-          n.hp = n.type === "guard" ? 140 : 100;
-          n.x = n.type === "guard" ? (n.id === "guard0" ? -6 : 6) : n.x;
-          n.z = n.type === "guard" ? -23 : n.z;
+      if (n.hp <= 0) {
+        n.mode = "dead";
+        if (this.time - n.deadAt > 400) {
+          Object.assign(n, {
+            x: n.homeX,
+            z: n.homeZ,
+            hp: n.type === "bandit" ? 120 : n.type === "wolf" ? 85 : 65,
+            harvested: false,
+          });
         }
         continue;
       }
-      if (["seller", "cashier"].includes(n.type)) continue;
-      let target = null;
-      if (n.type === "police" || n.type === "guard")
-        target = [...this.players.values()]
-          .filter(
-            (p) =>
-              p.connected !== false &&
-              p.wanted &&
-              (n.type === "police" || inside(p, WORLD.bank)) &&
-              (this.canSee(n, p, 27) || dist(n, p) < 4),
-          )
-          .sort((a, b) => dist(n, a) - dist(n, b))[0];
-      if (target) {
-        n.target = { x: target.x, z: target.z };
+      const candidates = [...this.players.values()]
+        .filter(
+          (p) =>
+            p.connected !== false &&
+            p.protection < this.time &&
+            dist(p, n) < (n.type === "deer" ? 18 : night ? 36 : 26) &&
+            lineClear(n, p),
+        )
+        .sort((a, b) => dist(a, n) - dist(b, n));
+      const p = candidates[0];
+      let speed = 1.15;
+      if (p && n.type === "deer") {
+        const d = dist(n, p) || 1;
+        n.target = {
+          x: n.x + ((n.x - p.x) / d) * 25,
+          z: n.z + ((n.z - p.z) / d) * 25,
+        };
+        speed = 6;
+        n.mode = "run";
+      } else if (p && !(n.type === "wolf" && this.nearFire(p))) {
+        n.target = { x: p.x, z: p.z };
+        n.alert = this.time + 6;
+        speed = n.type === "wolf" ? 5.6 : 3;
+        n.mode = "run";
         if (
-          dist(n, target) < (n.type === "police" ? 10 : 1.8) &&
-          this.canSee(
-            { ...n, yaw: Math.atan2(target.x - n.x, target.z - n.z) },
-            target,
-            12,
-          )
+          dist(p, n) < (n.type === "wolf" ? 2.2 : 23) &&
+          this.time - n.lastAttack > (n.type === "wolf" ? 0.85 : 1.4)
         ) {
-          target.hp -= (n.type === "police" ? 7 : 13) * dt;
-          target.lastSeen = this.time;
-          n.attacking = true;
-        } else n.attacking = false;
+          p.hp -= n.type === "wolf" ? 11 : 9;
+          n.lastAttack = this.time;
+          n.mode = "attack";
+        }
+      } else if (n.type === "wolf" && p && this.nearFire(p)) {
+        n.target = { x: n.x + (n.x - p.x), z: n.z + (n.z - p.z) };
+        speed = 3;
+        n.mode = "walk";
       } else if (
         !n.target ||
-        dist(n, n.target) < 1 ||
-        this.tickId % 180 === 0
+        dist(n, n.target) < 2 ||
+        (this.time > (n.alert || 0) && this.tickId % 100 === 0)
       ) {
-        n.attacking = false;
-        n.target =
-          n.type === "guard"
-            ? { x: -7 + Math.random() * 14, z: -18 - Math.random() * 11 }
-            : { x: -45 + Math.random() * 90, z: -8 + Math.random() * 15 };
+        n.target = {
+          x: n.homeX + (this.rng() - 0.5) * 34,
+          z: n.homeZ + (this.rng() - 0.5) * 34,
+        };
+        n.mode = "walk";
       }
-      if (n.target) {
+      if (n.target && n.mode !== "attack") {
         const dx = n.target.x - n.x,
           dz = n.target.z - n.z,
-          len = Math.hypot(dx, dz);
-        n.yaw = Math.atan2(dx, dz);
-        const s = (target ? 3.5 : n.type === "elder" ? 0.65 : 1.25) * dt;
-        if (len > 1) {
-          if (!blocked(n.x + (dx / len) * s, n.z, this.door))
-            n.x += (dx / len) * s;
-          if (!blocked(n.x, n.z + (dz / len) * s, this.door))
-            n.z += (dz / len) * s;
-        } else if (!target) n.yaw += Math.sin(this.time) * dt;
-      }
-      // Bystanders occasionally look at the closest player.
-      if (!target && this.tickId % 100 < 20) {
-        const p = [...this.players.values()].find((p) => dist(n, p) < 7);
-        if (p) n.yaw = Math.atan2(p.x - n.x, p.z - n.z);
+          d = Math.hypot(dx, dz);
+        if (d > 1) {
+          let angle = Math.atan2(dx, dz),
+            moved = false;
+          for (const offset of [0, 0.7, -0.7, 1.4, -1.4]) {
+            const x = n.x + Math.sin(angle + offset) * speed * dt,
+              z = n.z + Math.cos(angle + offset) * speed * dt;
+            if (!blocked(x, z)) {
+              n.x = x;
+              n.z = z;
+              n.yaw = angle + offset;
+              moved = true;
+              break;
+            }
+          }
+          if (!moved) n.target = null;
+        } else n.mode = "idle";
       }
     }
-    this.npcs = this.npcs.filter((n) => !n.remove);
   }
   snapshot(id) {
-    const players = [...this.players.values()].map((p) => ({
-      id: p.id === id ? "self" : `player${p.slot}`,
-      slot: p.slot,
-      name: p.name,
-      x: p.x,
-      z: p.z,
-      yaw: p.yaw,
-      hp: p.hp,
-      moving: p.moving,
-      selected: p.selected,
-      wanted: p.wanted,
-      sleep: p.sleep,
-      shot: p.shotUntil > this.time,
-      shotAt: p.lastShot,
-      connected: p.connected !== false,
-      carrying: p.job?.stage === "carry",
-      looting: !!p.loot,
-    }));
     const p = this.players.get(id);
-    const self = p
-      ? {
-          ...this.savePlayer(p),
-          handCash: p.handCash || 0,
-          wanted: p.wanted,
-          job: p.job,
-          loot: p.loot,
-          reload: !!p.reload,
-          sleep: p.sleep,
-        }
-      : null;
     return {
       type: "state",
       time: this.time,
-      door: this.door,
-      bankCash: this.bankCash,
-      players,
-      self,
-      npcs: this.npcs.map(({ target, ...n }) => n),
+      hour: (5.5 + this.time / 45) % 24,
+      temperature: Math.round(-8 - Math.sin(this.time / 100) * 5),
+      storm: Math.sin(this.time / 140) > 0.7,
+      players: [...this.players.values()].map((p) => ({
+        id: p.id === id ? "self" : "player" + p.slot,
+        slot: p.slot,
+        name: p.name,
+        x: p.x,
+        z: p.z,
+        yaw: p.yaw,
+        hp: p.hp,
+        selected: p.selected,
+        airY: p.airY,
+        moving: p.moving,
+        running: p.running,
+        connected: p.connected !== false,
+        shotAt: p.lastShot,
+      })),
+      self: p
+        ? { ...this.savePlayer(p), loot: p.loot, reload: !!p.reload }
+        : null,
+      npcs: this.npcs.map(({ target, homeX, homeZ, alert, ...n }) => n),
+      depleted: this.depleted,
+      fires: this.fires,
+      stash: this.stash,
+      drops: this.drops.map(({ inventory, ...d }) => d),
+      radio: this.radio,
     };
   }
 }

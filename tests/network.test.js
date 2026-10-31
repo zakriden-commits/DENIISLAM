@@ -1,239 +1,173 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WebSocket } from "ws";
 import { RoomConnection } from "../src/connection.js";
-function client(port, token, role) {
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+function client(port, token, role, version = 3) {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/online`),
-    queue = [],
-    waiters = [];
-  ws.on("open", () => ws.send(JSON.stringify({ type: "join", token, role })));
-  ws.on("message", (raw) => {
-    const msg = JSON.parse(raw);
-    queue.push(msg);
-    for (const w of [...waiters])
-      if (w.check(msg)) {
-        w.done(msg);
-        waiters.splice(waiters.indexOf(w), 1);
-      }
-  });
+    messages = [];
+  ws.on("open", () =>
+    ws.send(JSON.stringify({ type: "join", token, role, version })),
+  );
+  ws.on("message", (raw) => messages.push(JSON.parse(raw)));
   return {
     ws,
-    latest() {
-      return [...queue].reverse().find((m) => m.type === "state");
-    },
-    wait(check) {
-      const found = queue.find(check);
-      if (found) return Promise.resolve(found);
-      return new Promise((resolve, reject) => {
-        const timer = setTimeout(
-          () => reject(Error("WebSocket message timeout")),
-          6000,
-        );
-        waiters.push({
-          check,
-          done: (msg) => {
-            clearTimeout(timer);
-            resolve(msg);
-          },
-        });
-      });
+    messages,
+    async wait(check) {
+      for (let i = 0; i < 100; i++) {
+        const m = messages.find(check);
+        if (m) return m;
+        await delay(50);
+      }
+      throw Error("Message timeout: " + JSON.stringify(messages.slice(0, 3)));
     },
   };
 }
 test(
-  "real server: two clients share room, signaling relays, third rejected, disk save survives restart",
-  { timeout: 20000 },
+  "real WebSocket server: protocol, 2 clients, signaling, takeover, reconnect, save/restart",
+  { timeout: 30000 },
   async () => {
-    const data = await mkdtemp(join(tmpdir(), "deni-islam-test-")),
+    const data = await mkdtemp(join(tmpdir(), "nf-network-")),
       port = 3191,
-      token1 = "10000000-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-      token2 = "20000000-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
-    let process,
-      connections = [],
-      auto;
+      aToken = "10000000-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      bToken = "20000000-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    let child;
+    const sockets = [];
     async function start() {
-      process = spawn("node", ["server/index.js"], {
+      child = spawn("node", ["server/index.js"], {
         env: {
-          ...global.process.env,
+          ...process.env,
           NODE_ENV: "production",
           PORT: String(port),
           DATA_DIR: data,
-          RECONNECT_GRACE_MS: "600",
+          RECONNECT_GRACE_MS: "500",
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
       let log = "";
       await new Promise((resolve, reject) => {
-        const timer = setTimeout(
-          () => reject(Error("Server start timeout: " + log)),
-          6000,
-        );
-        process.stdout.on("data", (raw) => {
-          log += raw;
+        const t = setTimeout(() => reject(Error("Startup: " + log)), 6000);
+        child.stdout.on("data", (d) => {
+          log += d;
           if (log.includes("one room")) {
-            clearTimeout(timer);
+            clearTimeout(t);
             resolve();
           }
         });
-        process.on("exit", (code) => {
-          if (code) {
-            clearTimeout(timer);
-            reject(Error("Server exited " + code));
-          }
-        });
+        child.stderr.on("data", (d) => (log += d));
       });
     }
     async function stop() {
-      const child = process;
-      if (!child || child.exitCode !== null) return;
-      await new Promise((resolve) => {
-        child.once("exit", resolve);
-        child.kill("SIGTERM");
-      });
+      if (child && child.exitCode === null)
+        await new Promise((r) => {
+          child.once("exit", r);
+          child.kill("SIGTERM");
+        });
     }
+    const add = (...args) => {
+      const c = client(port, ...args);
+      sockets.push(c.ws);
+      return c;
+    };
     try {
       await start();
-      const a = client(port, token1, "deni");
-      connections.push(a.ws);
-      assert.equal((await a.wait((m) => m.type === "welcome")).slot, 0);
-      const b = client(port, token2, "islam");
-      connections.push(b.ws);
-      assert.equal((await b.wait((m) => m.type === "welcome")).slot, 1);
-      const sa = await a.wait(
-        (m) => m.type === "state" && m.players.length === 2,
-      );
-      assert.deepEqual(
-        sa.players.map((p) => p.name),
-        ["Deni", "Islam"],
-      );
-      assert.equal(sa.self.balance, 200);
-      assert.equal(sa.players.filter((p) => p.id === "self").length, 1);
-      assert.ok(!JSON.stringify(sa).includes(token2));
-      const c = client(port, "30000000-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "deni");
-      connections.push(c.ws);
-      assert.match((await c.wait((m) => m.type === "error")).text, /заполнен/);
-      a.ws.send(
-        JSON.stringify({ type: "signal", data: { test: "voice-check" } }),
-      );
-      assert.equal(
-        (await b.wait((m) => m.type === "signal")).data.test,
-        "voice-check",
-      );
-      const health = await (
+      const h = await (
         await fetch(`http://127.0.0.1:${port}/api/health`)
       ).json();
-      assert.equal(health.players, 2);
-      // A network interruption must reserve the slot and resume the SAME player object.
-      await new Promise((resolve) => setTimeout(resolve, 3200));
-      const move = setInterval(
-        () => a.ws.send(JSON.stringify({ type: "input", x: 1, z: 0, aim: 0 })),
-        50,
+      assert.equal(h.version, "0.3.0");
+      const old = add(aToken, "deni", 2);
+      assert.match(
+        (await old.wait((m) => m.type === "error")).text,
+        /устарела/,
       );
-      await new Promise((resolve) => setTimeout(resolve, 650));
-      clearInterval(move);
-      a.ws.send(JSON.stringify({ type: "input", x: 0, z: 0, aim: 0 }));
-      await new Promise((resolve) => setTimeout(resolve, 130));
-      const before = a.latest();
-      assert.ok(before.players.find((p) => p.id === "self").x > -23.5);
-      a.ws.terminate();
-      await b.wait((m) => m.type === "peerLeft" && m.temporary === true);
-      const resumed = client(port, token1, "deni");
-      connections.push(resumed.ws);
+      const a = add(aToken, "deni"),
+        b = add(bToken, "islam");
+      assert.equal((await a.wait((m) => m.type === "welcome")).slot, 0);
+      assert.equal((await b.wait((m) => m.type === "welcome")).slot, 1);
+      const s = await a.wait(
+        (m) => m.type === "state" && m.players.length === 2,
+      );
+      assert.equal(s.self.inventory.axe, 1);
+      const third = add("30000000-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "deni");
+      assert.match(
+        (await third.wait((m) => m.type === "error")).text,
+        /заняты/,
+      );
+      a.ws.send(
+        JSON.stringify({
+          type: "signal",
+          data: { description: { type: "offer", sdp: "test" } },
+        }),
+      );
+      assert.equal(
+        (await b.wait((m) => m.type === "signal")).data.description.sdp,
+        "test",
+      );
+      const replacement = add(aToken, "deni");
+      assert.equal(
+        (await replacement.wait((m) => m.type === "welcome")).resumed,
+        true,
+      );
+      await delay(100);
+      assert.equal(
+        (await (await fetch(`http://127.0.0.1:${port}/api/health`)).json())
+          .players,
+        2,
+      );
+      replacement.ws.terminate();
+      await delay(100);
+      assert.equal(
+        (await (await fetch(`http://127.0.0.1:${port}/api/health`)).json())
+          .reserved,
+        1,
+      );
+      const resumed = add(aToken, "deni");
       assert.equal(
         (await resumed.wait((m) => m.type === "welcome")).resumed,
         true,
       );
-      const after = await resumed.wait((m) => m.type === "state");
-      assert.equal(after.self.balance, before.self.balance);
-      assert.ok(
-        Math.abs(
-          after.players.find((p) => p.id === "self").x -
-            before.players.find((p) => p.id === "self").x,
-        ) < 0.45,
-      );
-      assert.equal(after.self.sleep < 3, true);
-      // Take over a half-dead / stale connection without a duplicate-profile failure.
-      const moved = new Promise((resolve) =>
-        resumed.ws.once("close", (code) => resolve(code)),
-      );
-      const takeover = client(port, token1, "deni");
-      connections.push(takeover.ws);
-      assert.equal(
-        (await takeover.wait((m) => m.type === "welcome")).resumed,
-        true,
-      );
-      assert.equal(await moved, 4001);
-      takeover.ws.send(JSON.stringify({ type: "ping", at: 123 }));
-      assert.equal((await takeover.wait((m) => m.type === "pong")).at, 123);
-      // Deliberate exit releases the slot immediately; it is not treated as an outage.
+      resumed.ws.send(JSON.stringify({ type: "leave" }));
       b.ws.send(JSON.stringify({ type: "leave" }));
-      await takeover.wait(
-        (m) => m.type === "peerLeft" && m.temporary === false,
-      );
-      const h2 = await (
-        await fetch(`http://127.0.0.1:${port}/api/health`)
-      ).json();
-      assert.equal(h2.players, 1);
-      assert.equal(h2.reserved, 0);
-      // Expired grace saves and frees the disconnected player's slot.
-      takeover.ws.terminate();
-      await new Promise((resolve) => setTimeout(resolve, 850));
-      const h3 = await (
-        await fetch(`http://127.0.0.1:${port}/api/health`)
-      ).json();
-      assert.equal(h3.players, 0);
-      assert.equal(h3.reserved, 0);
+      await delay(150);
       await stop();
-      const saved = JSON.parse(await readFile(join(data, "save.json"), "utf8"));
-      assert.equal(saved.profiles[token1].balance, 200);
-      assert.equal(saved.profiles[token2].slot, 1);
+      const save = JSON.parse(
+        await readFile(join(data, "survival-save.json"), "utf8"),
+      );
+      assert.equal(save.schema, 3);
+      assert.equal(save.profiles[aToken].inventory.axe, 1);
       await start();
-      const again = client(port, token1, "deni");
-      connections.push(again.ws);
-      const restored = await again.wait((m) => m.type === "state");
-      assert.equal(restored.self.balance, 200);
-      assert.equal(restored.players[0].name, "Deni");
-      // The production reconnecting client also resumes against a REAL server.
+      const back = add(aToken, "deni");
+      assert.equal(
+        (await back.wait((m) => m.type === "state")).self.inventory.food,
+        2,
+      );
+      back.ws.terminate();
+      await delay(650);
       let welcomes = 0;
-      const firstWelcome = new Promise((resolve) => {
-        auto = new RoomConnection({
-          url: `ws://127.0.0.1:${port}/online`,
-          credentials: () => ({ token: token1, role: "deni" }),
-          WebSocketImpl: WebSocket,
-          retryBase: 15,
-          retryMax: 30,
-          onMessage: (m) => {
-            if (m.type === "welcome") {
-              welcomes++;
-              if (welcomes === 1) resolve(m);
-            }
-          },
-          onTerminal: (e) => {
-            throw Error(e);
-          },
-        });
+      const auto = new RoomConnection({
+        url: `ws://127.0.0.1:${port}/online`,
+        credentials: () => ({ token: aToken, role: "deni", version: 3 }),
+        WebSocketImpl: WebSocket,
+        retryBase: 20,
+        retryMax: 50,
+        heartbeatEvery: 100,
+        onMessage: (m) => {
+          if (m.type === "welcome") welcomes++;
+        },
       });
       auto.start();
-      assert.equal((await firstWelcome).resumed, true);
-      const previous = auto.socket;
-      const secondWelcome = new Promise((resolve) => {
-        const handler = auto.onMessage;
-        auto.onMessage = (m) => {
-          handler(m);
-          if (m.type === "welcome" && welcomes === 2) resolve(m);
-        };
-      });
-      previous.terminate();
-      assert.equal((await secondWelcome).resumed, true);
-      assert.notEqual(auto.socket, previous);
+      for (let i = 0; i < 100 && !welcomes; i++) await delay(20);
+      assert.equal(welcomes, 1);
+      auto.socket.terminate();
+      for (let i = 0; i < 100 && welcomes < 2; i++) await delay(20);
+      assert.equal(welcomes, 2);
       auto.stop();
     } finally {
-      auto?.stop();
-      for (const ws of connections) ws.terminate();
+      for (const ws of sockets) ws.terminate();
       await stop();
       await rm(data, { recursive: true, force: true });
     }

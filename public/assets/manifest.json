@@ -1,0 +1,338 @@
+[
+  {
+    "file": "forest.hdr",
+    "repo": "BabylonJS/Assets",
+    "path": "ibl/forest.hdr",
+    "sha": "d192e00a8416a08d9cff02fc3251af584c5f9d5c",
+    "bytes": 7396642,
+    "license": "CC-BY-4.0"
+  },
+  {
+    "file": "ground-color.png",
+    "repo": "BabylonJS/Assets",
+    "path": "textures/rockyGround_basecolor.png",
+    "sha": "5930788f52de7b4da9868c0b133e85352fb83028",
+    "bytes": 1819556,
+    "license": "CC-BY-4.0"
+  },
+  {
+    "file": "ground-normal.png",
+    "repo": "BabylonJS/Assets",
+    "path": "textures/rockyGround_normal.png",
+    "sha": "725f581fe9d27f0dcf36ee70151f293dcdb79160",
+    "bytes": 2488211,
+    "license": "CC-BY-4.0"
+  },
+  {
+    "file": "ground-rough.png",
+    "repo": "BabylonJS/Assets",
+    "path": "textures/rockyGround_metalRough.png",
+    "sha": "aa445568b7490eff8b01f8db1b12962428b3c2b5",
+    "bytes": 625737,
+    "license": "CC-BY-4.0"
+  },
+  {
+    "file": "grass.png",
+    "repo": "BabylonJS/Assets",
+    "path": "textures/grass.png",
+    "sha": "ad84812e85f7cc53b1efc2eb817dcdc744d90c2c",
+    "bytes": 2589839,
+    "license": "CC-BY-4.0"
+  },
+  {
+    "file": "bark.jpg",
+    "repo": "BabylonJS/Assets",
+    "path": "meshes/Trees/BroadleafBark.jpg",
+    "sha": "c9dd34a3c3e2627d77350d67a43dba4bee0a5385",
+    "bytes": 1376995,
+    "license": "CC-BY-4.0"
+  },
+  {
+    "file": "bark-normal.png",
+    "repo": "BabylonJS/Assets",
+    "path": "meshes/Trees/BroadleafBark_Normal.png",
+    "sha": "186c5bdaa6cd29ac25d18748a71b07fbe265bf73",
+    "bytes": 2127114,
+    "license": "CC-BY-4.0"
+  },
+  {
+    "file": "foliage.png",
+    "repo": "BabylonJS/Assets",
+    "path": "meshes/Trees/Broadleaf_Desktop_Atlas.png",
+    "sha": "9d7813338b15c75ee56403c34fa41e37ae51d8fc",
+    "bytes": 1462065,
+    "license": "CC-BY-4.0"
+  },
+  {
+    "file": "foliage-normal.png",
+    "repo": "BabylonJS/Assets",
+    "path": "meshes/Trees/Broadleaf_Desktop_Atlas_Normal.png",
+    "sha": "af927256b813defa3f6d89a78b87d5f42cde7686",
+    "bytes": 1612927,
+    "license": "CC-BY-4.0"
+  },
+  {
+    "file": "tree-lod.png",
+    "repo": "BabylonJS/Assets",
+    "path": "meshes/Trees/Broadleaf_Desktop_Atlas_Billboards.png",
+    "sha": "cfbd59d49ab723773d991f7df9366e996f521a32",
+    "bytes": 816668,
+    "license": "CC-BY-4.0"
+  },
+  {
+    "file": "tree-lod-normal.png",
+    "repo": "BabylonJS/Assets",
+    "path": "meshes/Trees/Broadleaf_Desktop_Atlas_Billboards_Normal.png",
+    "sha": "872bd46d090cb19e5674d2b4097ca99d00ef1a3d",
+    "bytes": 907038,
+    "license": "CC-BY-4.0"
+  },
+  {
+    "file": "water-foam.png",
+    "repo": "BabylonJS/Assets",
+    "path": "textures/waterFoam_circular_mask.png",
+    "sha": "692c9655ea1864bafc03bbf8603a56a2f4a16114",
+    "bytes": 4525960,
+    "license": "CC-BY-4.0"
+  },
+  {
+    "file": "winter-woods.mp3",
+    "repo": "BabylonJS/Assets",
+    "path": "sound/Snow_Man_Scene/winterWoods.mp3",
+    "sha": "821a7d6f7235ae0c78ea920bcf9641299a2b6cc2",
+    "bytes": 3089136,
+    "license": "CC-BY-4.0"
+  },
+  {
+    "file": "Axe.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/survival_pack/Axe.glb",
+    "sha": "894fb51029567ea688452b12fef813b67689edf7",
+    "bytes": 16196,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Backpack.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/survival_pack/Backpack.glb",
+    "sha": "71e94c4ffe519d98e1c1bc1d1a2631540e352bbd",
+    "bytes": 99444,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Bandages.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/survival_pack/Bandages.glb",
+    "sha": "7bd6b5c2082ecd12cbc01dbe82c5ce2f609d9f23",
+    "bytes": 10904,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Bonfire.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/survival_pack/Bonfire.glb",
+    "sha": "9b428ce2d55bcf38aba0fcee422e1561a509bd3c",
+    "bytes": 35756,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Bonfire_Fire.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/survival_pack/Bonfire_Fire.glb",
+    "sha": "a8c8641b55fa1902107722d13832597252e35280",
+    "bytes": 43676,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Can_Red.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/survival_pack/Can_Red.glb",
+    "sha": "13d9854e45650102b950064915eca002326feb1b",
+    "bytes": 21304,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "FirstAidKit.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/survival_pack/FirstAidKit.glb",
+    "sha": "54eb3f77afacb020445d8ea8f59db0b23412ce3f",
+    "bytes": 44444,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "GasCan.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/survival_pack/GasCan.glb",
+    "sha": "eb1b65de8fbe904087103f693d0259f3f20a5495",
+    "bytes": 45724,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Pistol_1.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/survival_pack/Pistol_1.glb",
+    "sha": "955f8cd96f6cd8b1324498b75b842ac28d1e8912",
+    "bytes": 60144,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Shotgun_1.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/survival_pack/Shotgun_1.glb",
+    "sha": "c614f2592695d0fffb6a2db8ca922416de9e4190",
+    "bytes": 70432,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Radio.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/survival_pack/Radio.glb",
+    "sha": "c88b06e75b8138d0c9ff6969bfe9563973c2b1bc",
+    "bytes": 28996,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Tent.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/survival_pack/Tent.glb",
+    "sha": "436d1f9031b2636eb91b251df0f69aa67c759bff",
+    "bytes": 45036,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "WaterBottle_1.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/survival_pack/WaterBottle_1.glb",
+    "sha": "500bd8b541c7f24802f14c07ee34d0fe6d083406",
+    "bytes": 11268,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "WoodLog.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/survival_pack/WoodLog.glb",
+    "sha": "c34ce2ff0767cb9a4abcda1943c8806985098697",
+    "bytes": 13904,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Knife.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/survival_pack/Knife.glb",
+    "sha": "a4ea221da4b91390df7084754a47b494d15a0312",
+    "bytes": 28692,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "PineTree_1.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/nature_pack/PineTree_1.glb",
+    "sha": "ad802951468ccc02465a2a0ee1b4a7395acc28fb",
+    "bytes": 106060,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "PineTree_2.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/nature_pack/PineTree_2.glb",
+    "sha": "ea16e5027341208450ace459079cd3ca97769949",
+    "bytes": 93688,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "BirchTree_Dead_1.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/nature_pack/BirchTree_Dead_1.glb",
+    "sha": "b542983ad1393105a16550b99977e966132c9f40",
+    "bytes": 47996,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Rock_Moss_1.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/nature_pack/Rock_Moss_1.glb",
+    "sha": "6416ffe51639c45249138b092f8292ec62c4db62",
+    "bytes": 6560,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "BushBerries_1.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/nature_pack/BushBerries_1.glb",
+    "sha": "c21615b1443afefe5f4a1392ee5fc50cd8ce7a7e",
+    "bytes": 50896,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Grass.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/nature_pack/Grass.glb",
+    "sha": "f448fddc97a22370d97fbc12e6a91f57ed2c06de",
+    "bytes": 12632,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Wolf.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/animals_pack/Wolf.glb",
+    "sha": "c54b02936167a3b0d9a7e8d467432ba4fa788d6b",
+    "bytes": 608660,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Deer.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/animals_pack/Deer.glb",
+    "sha": "0c1a5a5d55ec13ca7899dd3a57256724cd9fca4e",
+    "bytes": 662108,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Adventurer.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/modular_men/Adventurer.glb",
+    "sha": "14456cd24345ad437840365396b60e82af653507",
+    "bytes": 1272560,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Worker.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/modular_men/Worker.glb",
+    "sha": "f9c8aa373fe950dded61eab9b4a895e71d58ddb0",
+    "bytes": 673480,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Swat.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/modular_men/Swat.glb",
+    "sha": "ac1ea33eb1f12541acba6821bc8b266c9c5cb315",
+    "bytes": 889396,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "Building2_Small.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/buildings_pack_2/Building2_Small.glb",
+    "sha": "424e2c13ab54cb620ca55e53d7fb7e66bac687d1",
+    "bytes": 231300,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "House1.glb",
+    "repo": "trebeljahr/quaternius-showcase",
+    "path": "public/glb/buildings_pack_2/House1.glb",
+    "sha": "c724e8bf0e1f19b4bb04a84c51325240c22abb4a",
+    "bytes": 1528692,
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "trees.json",
+    "repo": "BabylonJS/Assets",
+    "path": "meshes/Trees/rawtrees.babylon",
+    "sha": "58eadda6c2a76f15fed1573aca7178b4d70feb4f",
+    "bytes": 2553233,
+    "license": "CC-BY-4.0"
+  }
+]

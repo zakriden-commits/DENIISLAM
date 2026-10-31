@@ -1,213 +1,155 @@
 <!doctype html>
 <html lang="ru">
   <head>
-    <meta charset="UTF-8" />
+    <meta charset="utf-8" />
     <meta
       name="viewport"
       content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"
     />
-    <meta name="theme-color" content="#141c1b" />
+    <meta name="theme-color" content="#17201e" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta
-      name="apple-mobile-web-app-status-bar-style"
-      content="black-translucent"
-    />
-    <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-    <title>Deni Islam — Двое против квартала</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <title>Северный рубеж — Deni / Islam</title>
   </head>
   <body>
-    <canvas id="game"></canvas>
-    <div id="vignette"></div>
-    <div id="noise"></div>
-    <div id="scanlines"></div>
+    <canvas id="game" aria-label="Трёхмерный мир выживания"></canvas>
+    <div id="grain"></div>
     <div id="loading">
-      <div class="brand-small">DI<span>INTERACTIVE</span></div>
-      <div class="loader-line"></div>
-      <p>Собираем квартал…</p>
+      <span class="eyebrow">DENI / ISLAM • НОВАЯ ГЛАВА</span>
+      <h1>СЕВЕРНЫЙ<br />РУБЕЖ<span>′</span></h1>
+      <p id="loadText">Подготовка лесного массива…</p>
+      <div class="loadtrack"><i id="loadBar"></i></div>
+      <small
+        >Загружаются настоящие модели, текстуры и звук. Первый запуск
+        дольше.</small
+      >
     </div>
-    <section id="menu" class="hidden">
-      <header class="menu-header">
-        <a class="brand-small" href="#">DI<span>КВАРТАЛ НЕ СПИТ</span></a>
-        <div class="build-tag">
-          <span class="dot"></span> CO-OP / 02
-          <span class="muted"> · </span> FPS · ALPHA 0.2
-        </div>
-        <button id="displayBtn" class="text-button">
-          Экран <span>⚙</span></button
-        ><button id="aboutBtn" class="text-button">
-          Об игре <span>↗</span>
+    <section id="menu" hidden>
+      <header class="menu-top">
+        <b class="brand">D / I<span>SURVIVAL PROJECT</span></b
+        ><span class="build">ПОЛЕВАЯ СБОРКА <b>0.3</b></span
+        ><button
+          class="icon-button"
+          data-open="settings"
+          aria-label="Настройки"
+        >
+          ⚙
         </button>
       </header>
-      <div class="menu-content">
-        <div class="eyebrow"><span></span> ДВОЕ ПРОТИВ КВАРТАЛА</div>
-        <h1>
-          DENI<span>ISLAM<span class="title-dot">.</span></span>
-        </h1>
+      <main class="menu-main">
+        <div class="eyebrow"><i></i> 67° N · ЗОНА ОТЧУЖДЕНИЯ</div>
+        <h1>СЕВЕРНЫЙ<br />РУБЕЖ<span>′</span></h1>
         <p class="intro">
-          Один дом. Один большой план.<br />И целый город, которому лучше не
-          знать.
+          Север отрезан. Припасы на исходе.<br />Холод не прощает. Выживайте
+          вместе.
         </p>
-        <div class="menu-actions">
-          <button id="play" class="primary">
-            <span>Играть</span><span class="arrow">↗</span></button
-          ><button id="helpBtn" class="square" title="Управление">?</button>
+        <div class="role-label">
+          ВАШ ВЫЖИВШИЙ <span>02 МЕСТА В ОТРЯДЕ</span>
         </div>
-        <div id="connectionStatus" class="connection">
-          <span class="dot"></span> ПРОВЕРЯЕМ КВАРТАЛ…
-        </div>
-      </div>
-      <aside class="crew-panel">
-        <div class="eyebrow">01 / ВЫБЕРИ СВОЮ СТОРОНУ</div>
-        <div class="role-grid">
-          <button class="role selected" data-role="deni">
-            <div class="portrait gentleman"><i></i></div>
-            <span class="role-name">DENI</span><small>ДЖЕНТЛЬМЕН</small
-            ><span class="role-check">✓</span></button
-          ><button class="role" data-role="islam">
-            <div class="portrait rough"><i></i></div>
-            <span class="role-name">ISLAM</span><small>СВОЙ НА РАЙОНЕ</small
-            ><span class="role-check">✓</span>
+        <div class="roles">
+          <button data-role="deni" class="active">
+            <b>01 / DENI</b><small>Разведчик</small></button
+          ><button data-role="islam">
+            <b>02 / ISLAM</b><small>Механик</small>
           </button>
         </div>
-        <div class="server-row">
-          <span class="dot"></span>
-          <div>
-            Квартал № 01<small id="population">ОБЩИЙ СЕРВЕР · 2 МЕСТА</small>
-          </div>
-          <span class="server-symbol">◎</span>
+        <button id="play" class="primary">НАЧАТЬ ВЫЛАЗКУ <span>↗</span></button>
+        <div class="menu-links">
+          <button data-open="help">ПОЛЕВОЙ СПРАВОЧНИК</button
+          ><button data-open="credits">О ПРОЕКТЕ</button>
         </div>
-        <label class="voice-option"
-          ><input id="voiceOpt" type="checkbox" /><span
-            >Включить голосовой чат<small
-              >Микрофон — только с вашего разрешения</small
-            ></span
-          ></label
-        ><button id="settingsBtn" class="text-button settings-link">
-          Адрес сервера и код комнаты <span>⚙</span>
-        </button>
+      </main>
+      <aside class="brief">
+        <span class="eyebrow">ОПЕРАЦИЯ / 001</span>
+        <h2>ПОСЛЕДНЯЯ ЧАСТОТА</h2>
+        <p>
+          Лесопилка. Насосная. Бункер.<br />Найдите три радиодетали и верните
+          связь с внешним миром.
+        </p>
+        <div class="brief-stats">
+          <span><b>1 КМ²</b>ОТКРЫТЫЙ МИР</span><span><b>2</b>ВЫЖИВШИХ</span
+          ><span><b>−12°</b>НЕ ПРОГНОЗ</span>
+        </div>
+        <div class="brief-bottom"><i></i> ОДИН ЛЕС. ОДИН ШАНС.</div>
       </aside>
-      <footer class="menu-footer">
-        <span>НЕ СОЛО. НЕ ПО ПРАВИЛАМ.</span
-        ><span class="footer-hint"
-          >WASD — движение <i> / </i> E — действие <i> / </i> M — карта</span
-        ><span>3D · ONLINE · 16+</span>
+      <footer class="menu-bottom">
+        <span id="serverStatus">ПРОВЕРКА КАНАЛА СВЯЗИ…</span
+        ><span>КООПЕРАТИВ ОТ ПЕРВОГО ЛИЦА <b>•</b> ALPHA</span>
       </footer>
     </section>
-    <section id="hud" class="hidden">
+    <section id="hud" hidden>
       <div class="hud-top">
-        <div class="session-chip">
-          <b>DI<span>.</span></b>
-          <div>КВАРТАЛ № 01<small id="sessionPlayers">В СЕТИ · 1/2</small></div>
-          <span class="dot"></span>
-        </div>
-        <div class="compass">
-          <span>З</span><span>·</span><span>С</span><b>◈</b><span>В</span
-          ><span>·</span><span>Ю</span>
-        </div>
-        <div class="top-controls">
-          <button id="fullscreenBtn" class="hud-button" title="Полный экран">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5" />
-            </svg></button
-          ><button id="micBtn" class="hud-button" title="Микрофон">MIC ×</button
-          ><button id="pauseBtn" class="hud-button">Ⅱ</button>
+        <button id="pause" class="hud-brand">
+          СЕВЕРНЫЙ РУБЕЖ <span>Ⅱ</span>
+        </button>
+        <div id="compass">С <b>000</b> СВ</div>
+        <div class="weather">
+          <span id="weather">−12°C</span><b id="time">05:30</b
+          ><small id="online">01 / 02</small>
         </div>
       </div>
-      <div id="mission">
-        <span class="eyebrow">ПЕРВЫЙ БОЛЬШОЙ ПЛАН</span
-        ><b id="missionTitle">Сначала — на район</b>
-        <p id="missionText">У склада есть работа. Заработайте на снаряжение.</p>
-      </div>
-      <div class="radar-wrap">
-        <div class="radar-label">
-          <span id="district">СТАРЫЙ КВАРТАЛ</span><span>N ↑</span>
-        </div>
-        <canvas id="radar" width="180" height="150"></canvas>
-        <div id="wanted" class="wanted">☆☆☆☆☆</div>
-      </div>
-      <div id="toastStack"></div>
-      <div id="spawnBanner" class="hidden">
-        <small>НОВЫЙ ДЕНЬ В КВАРТАЛЕ</small><b>Просыпайся. Нас ждут дела.</b>
+      <div id="connection" hidden>Связь потеряна. Возвращаемся в отряд…</div>
+      <div class="mission">
+        <small>ЗАДАЧА / СВЯЗЬ</small
+        ><b id="objective">Разожгите костёр у убежища</b
+        ><span id="waypoint"></span>
       </div>
       <div id="crosshair"><i></i></div>
-      <div id="rotateHint">
-        ↻ Поверните телефон горизонтально · ⛶ полный экран
+      <div id="target" hidden>
+        <span class="key">E</span> <b id="targetText"></b>
+        <div id="gatherTrack"><i id="gatherFill"></i></div>
       </div>
-      <div id="interaction" class="hidden">
-        <span class="key">E</span>
-        <div><b id="interactTitle"></b><small id="interactSub"></small></div>
-      </div>
-      <div id="lootProgress" class="hidden">
-        <div><span>СОБИРАЕМ ДЕНЬГИ</span><b id="lootTimer">0 / 15 c</b></div>
-        <i><em></em></i
-        ><small>Не отпускайте кнопку и не отходите от денег</small>
-      </div>
-      <div class="hud-bottom">
-        <div class="vitals">
-          <div class="balance">
-            <span>₽</span><b id="balance">200</b><small>БАЛАНС</small>
-          </div>
-          <div class="vital-row">
-            <span>+</span>
-            <div class="bar health"><i id="hpBar"></i></div>
-            <b id="hp">100</b>
-          </div>
-          <div class="vital-row">
-            <span>ϟ</span>
-            <div class="bar stamina"><i id="staminaBar"></i></div>
-            <b id="stamina">100</b>
-          </div>
-          <div class="player-label">
-            <span class="dot"></span><span id="playerName">DENI</span
-            ><small id="saveState">АВТОСОХРАНЕНИЕ</small>
-          </div>
+      <div id="damage"></div>
+      <div id="frost"></div>
+      <div class="vitals">
+        <div class="health">
+          <span>ЖИЗНЬ <b id="hp">100</b></span>
+          <div><i id="hpBar"></i></div>
         </div>
-        <div class="inventory-area">
-          <div id="ammoReadout"></div>
-          <div id="hotbar"></div>
-          <span class="hotbar-hint">1–6 ВЫБРАТЬ · R ПЕРЕЗАРЯДИТЬ</span>
+        <div class="needs">
+          <span>ЕДА <b id="hunger">85</b></span
+          ><span>ВОДА <b id="thirst">85</b></span
+          ><span>ТЕПЛО <b id="warmth">80</b></span>
         </div>
+        <div class="stamina"><i id="staminaBar"></i></div>
       </div>
-      <div id="joystick"><div id="stick"></div></div>
-      <div id="mobileActions">
-        <button id="runBtn" title="Бежать">ϟ</button
-        ><button id="reloadBtn" title="Перезарядка">↻</button
-        ><button id="attackBtn" title="Атаковать">◎</button
-        ><button id="touchInteract" class="hidden">E</button>
+      <div id="hotbar"></div>
+      <div class="equipment">
+        <small id="weaponName">ПОХОДНЫЙ ТОПОР</small
+        ><b id="ammo">— <span>/ —</span></b>
       </div>
-      <button id="mapBtn" class="map-button">КАРТА <b>M</b></button>
+      <div class="hud-tools">
+        <button id="mapButton" title="Карта (M)">КАРТА</button
+        ><button id="bagButton" title="Рюкзак (Tab)">РЮКЗАК</button
+        ><button id="mic" title="Голосовой чат">MIC</button>
+      </div>
+      <small class="desktop-hint"
+        >WASD — идти · SHIFT — бег · E — действие · TAB — рюкзак · M —
+        карта</small
+      >
+      <div id="touch">
+        <div id="stick"><div id="stickKnob"></div></div>
+        <button id="run" class="touch-button">БЕГ</button
+        ><button id="fire" class="touch-button">◎</button
+        ><button id="interact" class="touch-button">РУКА</button
+        ><button id="reload" class="touch-button">R</button
+        ><button id="jump" class="touch-button">↑</button
+        ><span class="look-hint">ПРОВЕДИТЕ СПРАВА, ЧТОБЫ ОСМОТРЕТЬСЯ</span>
+      </div>
+      <div id="rotateHint">↻ Удобнее играть горизонтально</div>
     </section>
-    <div id="modal" class="hidden">
-      <div class="modal-card">
-        <div class="modal-header">
-          <div>
-            <span id="modalEyebrow" class="eyebrow">DENI ISLAM</span>
-            <h2 id="modalTitle"></h2>
-          </div>
-          <button id="closeModal" class="close">×</button>
+    <div id="toast" role="status" hidden></div>
+    <dialog id="dialog">
+      <div class="dialog-header">
+        <div>
+          <small id="dialogTag">ПОЛЕВОЙ ТЕРМИНАЛ</small>
+          <h2 id="dialogTitle"></h2>
         </div>
-        <div id="modalBody"></div>
+        <button id="closeDialog" aria-label="Закрыть">×</button>
       </div>
-    </div>
-    <div id="disconnect" class="hidden">
-      <div>
-        <div class="eyebrow">СВЯЗЬ С КВАРТАЛОМ ПОТЕРЯНА</div>
-        <h2 id="disconnectTitle">Восстанавливаем связь</h2>
-        <p id="disconnectText">Вещи сохранены при последнем автосохранении.</p>
-        <small id="retryCountdown">Подключаемся…</small>
-        <div class="modal-actions">
-          <button id="reconnect" class="primary">Повторить сейчас ↻</button
-          ><button id="disconnectExit" class="secondary">В меню</button>
-        </div>
-      </div>
-    </div>
+      <div id="dialogBody"></div>
+    </dialog>
     <audio id="remoteAudio" autoplay playsinline></audio>
     <script type="module" src="/src/main.js"></script>
   </body>

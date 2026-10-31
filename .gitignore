@@ -15,3 +15,5 @@ android/local.properties
 android/**/build/
 android/app/src/main/assets/public/
 .DS_Store
+
+.cache/

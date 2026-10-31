@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Deni Islam</string>
-    <string name="title_activity_main">Deni Islam</string>
+    <string name="app_name">Северный рубеж</string>
+    <string name="title_activity_main">Северный рубеж</string>
     <string name="package_name">com.deniislam.quarter</string>
     <string name="custom_url_scheme">com.deniislam.quarter</string>
 </resources>

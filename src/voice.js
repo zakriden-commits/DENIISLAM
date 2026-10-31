@@ -20,6 +20,17 @@ export class Voice {
         audio: { echoCancellation: true, noiseSuppression: true },
         video: false,
       });
+      if (this.pc) {
+        for (const track of this.stream.getAudioTracks()) {
+          const transceiver = this.pc
+            .getTransceivers()
+            .find((t) => t.receiver.track.kind === "audio" && !t.sender.track);
+          if (transceiver) {
+            await transceiver.sender.replaceTrack(track);
+            transceiver.direction = "sendrecv";
+          } else this.pc.addTrack(track, this.stream);
+        }
+      }
       this.enabled = true;
       return true;
     } catch {

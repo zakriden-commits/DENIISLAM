@@ -13,7 +13,9 @@ const reconnectGrace = Number(process.env.RECONNECT_GRACE_MS) || 90000;
 await mkdir(dataDir, { recursive: true });
 let saved = {};
 try {
-  saved = JSON.parse(await readFile(path.join(dataDir, "save.json"), "utf8"));
+  saved = JSON.parse(
+    await readFile(path.join(dataDir, "survival-save.json"), "utf8"),
+  );
 } catch (e) {
   if (e.code !== "ENOENT") console.error("Save read failed:", e.message);
 }
@@ -37,7 +39,7 @@ app.get("/api/health", (_req, res) =>
     reserved: game.players.size - clients.size,
     capacity: 2,
     instance,
-    version: "0.2.0",
+    version: "0.3.0",
     uptime: Math.floor((Date.now() - started) / 1000),
   }),
 );
@@ -158,6 +160,14 @@ wss.on("connection", (ws) => {
         ws.close(1008);
         return;
       }
+      if (msg.version !== 3) {
+        send(ws, {
+          type: "error",
+          text: "Сборка устарела. Установите новую Survival 0.3 с GitHub Releases.",
+        });
+        ws.close(1008);
+        return;
+      }
       try {
         const existing = game.players.get(msg.token);
         const p = existing || game.add(msg.token, msg.role);
@@ -227,10 +237,10 @@ function queueSave() {
   const serialized = JSON.stringify(game.save());
   saving = saving
     .then(async () => {
-      await writeFile(path.join(dataDir, "save.tmp"), serialized);
+      await writeFile(path.join(dataDir, "survival-save.tmp"), serialized);
       await rename(
-        path.join(dataDir, "save.tmp"),
-        path.join(dataDir, "save.json"),
+        path.join(dataDir, "survival-save.tmp"),
+        path.join(dataDir, "survival-save.json"),
       );
     })
     .catch((e) => console.error("SAVE ERROR", e));

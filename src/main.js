@@ -1,1324 +1,960 @@
-import "./style.css";
 import "./mobile.css";
-import * as THREE from "three";
+import * as T from "three";
+import { Capacitor } from "@capacitor/core";
+import { Assets } from "./assets.js";
+import { SurvivalWorld } from "./world.js";
 import {
-  City,
-  character,
-  animateCharacter,
-  weaponModel,
-  box,
-} from "./world.js";
-import { WORLD, ITEMS, dist, inside } from "./shared.js";
-import { Voice } from "./voice.js";
+  WORLD,
+  POIS,
+  NODES,
+  ITEMS,
+  RECIPES,
+  dist,
+  blocked,
+  nearbyTarget,
+  heightAt,
+} from "./shared.js";
 import { RoomConnection } from "./connection.js";
-import { FirstPersonView } from "./first-person.js";
+import { Voice } from "./voice.js";
 const $ = (s) => document.querySelector(s),
   $$ = (s) => [...document.querySelectorAll(s)];
-const show = (s, yes = true) => $(s).classList.toggle("hidden", !yes);
 const store = {
-  get(k, f = "") {
+  get: (k, f = "") => {
     try {
       return localStorage.getItem(k) || f;
     } catch {
       return f;
     }
   },
-  set(k, v) {
+  set: (k, v) => {
     try {
       localStorage.setItem(k, v);
     } catch {}
   },
 };
-const ICONS = {
-  fist: '<path d="M7 17V9a2 2 0 0 1 4 0V6a2 2 0 0 1 4 0v1a2 2 0 0 1 4 0v2a2 2 0 0 1 4 0v9l-4 7H11l-6-8a2 2 0 0 1 2-3l4 4"/>',
-  pistol:
-    '<path d="M3 8h24v7H15l-2 10H7l2-10H3z"/><path d="M17 15v5h-5M24 8V6H9v2"/>',
-  smg: '<path d="M3 10h22v7H15l2 9h-5l-2-9H3zM25 11h5v4h-5M3 12H0M6 17v8H2v-9"/>',
-  bag: '<path d="M4 10h24v16H4zM10 10V6h12v4M7 15h18M13 15v5h6v-5"/>',
-  cash: '<path d="M3 8h26v16H3zM4 12h24M11 8v16M21 8v16"/><path d="M6 4h20M8 0h16"/>',
-  medkit:
-    '<rect x="4" y="8" width="24" height="19" rx="2"/><path d="M11 8V4h10v4M16 12v10M11 17h10"/>',
-};
-function icon(name) {
-  return `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round">${ICONS[name] || ICONS.fist}</svg>`;
-}
-function notify(text, error = false) {
-  const el = document.createElement("div");
-  el.className = "toast" + (error ? " error" : "");
-  el.textContent = text;
-  $("#toastStack").append(el);
-  if (!playing) {
-    el.style.cssText =
-      "position:fixed;bottom:35px;left:50%;transform:translateX(-50%);width:min(440px,90vw);z-index:45;";
-    document.body.append(el);
-  }
-  setTimeout(() => el.remove(), 6500);
-  while ($("#toastStack").children.length > 3)
-    $("#toastStack").firstChild.remove();
-}
-const canvas = $("#game");
-let renderer;
-try {
-  renderer = new THREE.WebGLRenderer({
-    canvas,
-    antialias: true,
-    powerPreference: "high-performance",
-  });
-} catch {
-  $("#loading").innerHTML =
-    "<p>Нужен браузер с поддержкой WebGL 2: Chrome / Safari 16.4+.</p>";
-  throw Error("WebGL unavailable");
-}
-renderer.setPixelRatio(1);
-renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
-const scene = new THREE.Scene();
-scene.background = new THREE.Color("#8b9092");
-scene.fog = new THREE.FogExp2("#8b9092", 0.014);
-const camera = new THREE.PerspectiveCamera(
-  74,
-  innerWidth / innerHeight,
-  0.06,
-  160,
-);
-camera.position.set(47, 34, 53);
-scene.add(new THREE.AmbientLight("#b5bcc0", 0.45));
-scene.add(new THREE.HemisphereLight("#c7ced2", "#373633", 1.9));
-const sun = new THREE.DirectionalLight("#d5c9b6", 1.8);
-sun.position.set(-30, 55, 25);
-sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024);
-Object.assign(sun.shadow.camera, {
-  left: -65,
-  right: 65,
-  top: 60,
-  bottom: -60,
-  near: 1,
-  far: 150,
-});
-sun.shadow.bias = -0.0005;
-sun.shadow.normalBias = 0.045;
-scene.add(sun);
-scene.add(sun.target);
-const city = new City(scene),
-  actors = new Map(),
-  npcActors = new Map();
-const menuDuo = [character("deni"), character("islam")];
-menuDuo[0].position.set(5, 0, 5);
-menuDuo[1].position.set(7, 0, 5);
-menuDuo.forEach((m) => {
-  m.rotation.y = 0.6;
-  scene.add(m);
-});
-const firstPerson = new FirstPersonView(renderer);
-const touchDevice = matchMedia("(pointer:coarse)").matches;
-let sensitivity = Number(store.get("di-sensitivity", "1")) || 1;
-let quality = store.get("di-quality", "retro");
-let connection = null,
-  retryAt = 0;
-let playing = false,
-  joining = false,
-  state = null,
-  self = null,
-  role = store.get("di-role", "deni"),
-  slot = 0,
-  modalKind = "",
-  lastHotbar = "",
-  interaction = null,
-  holdingLoot = false,
-  attackHeld = false,
-  runTouch = false,
-  cameraYaw = 0.4,
-  cameraPitch = 0,
-  keys = {},
-  joy = { x: 0, y: 0 },
-  lastStateAt = 0,
-  elapsed = 0,
-  lookPointer = null,
-  joyPointer = null,
-  lookLast = null;
-let serverBase = (
-  store.get("di-server") ||
-  import.meta.env.VITE_SERVER_URL ||
-  location.origin
-).replace(/\/$/, "");
-let roomCode = store.get("di-room");
-const voice = new Voice(send, notify);
-let audioCtx = null;
-function sound(type) {
-  try {
-    audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === "suspended") audioCtx.resume();
-    const o = audioCtx.createOscillator(),
-      g = audioCtx.createGain();
-    o.connect(g);
-    g.connect(audioCtx.destination);
-    const now = audioCtx.currentTime;
-    o.type =
-      type === "shot" ? "sawtooth" : type === "punch" ? "triangle" : "sine";
-    o.frequency.setValueAtTime(
-      type === "shot"
-        ? 110
-        : type === "punch"
-          ? 85
-          : type === "buy"
-            ? 650
-            : 300,
-      now,
-    );
-    o.frequency.exponentialRampToValueAtTime(
-      type === "shot" ? 40 : 420,
-      now + 0.12,
-    );
-    g.gain.setValueAtTime(type === "shot" ? 0.12 : 0.045, now);
-    g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-    o.start();
-    o.stop(now + 0.16);
-  } catch {}
-}
-function send(data) {
-  return connection?.send(data) || false;
-}
-function selectRole(value) {
-  role = value;
-  store.set("di-role", value);
-  $$(".role").forEach((e) =>
-    e.classList.toggle("selected", e.dataset.role === value),
+const esc = (s) =>
+  String(s).replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ],
   );
-}
-$$(".role").forEach((el) => (el.onclick = () => selectRole(el.dataset.role)));
-selectRole(role);
-async function health() {
+let role = store.get("nf-role", "deni"),
+  playing = false,
+  world,
+  state,
+  self,
+  connection,
+  ready = false,
+  connected = false,
+  tab = "inventory",
+  waypoint = null,
+  target = null,
+  pred = null,
+  shotAt = -10,
+  toastTimer;
+let sensitivity = +store.get("nf-sensitivity", "1"),
+  sound = store.get("nf-sound", "on") === "on",
+  audio,
+  ctx,
+  fireHeld = false,
+  run = false,
+  joystick = { x: 0, z: 0 },
+  keys = new Set(),
+  lastBag = "";
+const native = Capacitor.isNativePlatform();
+// Migrate only obsolete sandbox defaults; never overwrite a custom permanent host.
+if (store.get("nf-server-migrated") !== "3") {
   try {
-    const r = await fetch(serverBase + "/api/health", {
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!r.ok) throw Error();
-    const data = await r.json();
-    $("#connectionStatus").innerHTML =
-      '<span class="dot"></span> КВАРТАЛ В СЕТИ · ВСТРЕЧА В ОБЩЕМ ДОМЕ';
-    if (serverBase.includes(".e2b.app"))
-      $("#connectionStatus").innerHTML +=
-        '<small class="temporary-host">Временный сервер Arena · не работает 24/7</small>';
-    $("#population").textContent = `В СЕТИ ${data.players}/2 · ОДНА КОМНАТА`;
-  } catch {
-    $("#connectionStatus").textContent =
-      "СЕРВЕР НЕ НАЙДЕН · ПРОВЕРЬТЕ АДРЕС В НАСТРОЙКАХ";
-    $("#population").textContent = "НЕТ СОЕДИНЕНИЯ";
-  }
-}
-health();
-function token() {
-  const key = "di-token-" + role;
-  let t = store.get(key);
-  if (!t) {
-    t = crypto.randomUUID();
-    store.set(key, t);
-  }
-  return t;
-}
-async function join() {
-  if (joining) {
-    backToMenu();
-    return;
-  }
-  if (playing) return;
-  joining = true;
-  $("#play").firstElementChild.textContent = "Отменить подключение";
-  requestGameScreen();
-  try {
-    if ($("#voiceOpt").checked) await voice.enable();
-    if (!joining) {
-      voice.close();
-      return;
-    }
-    await voice.configure(serverBase);
-    if (!joining) return;
-    connection = new RoomConnection({
-      url: serverBase.replace(/^http/, "ws") + "/online",
-      credentials: () => ({ token: token(), role, code: roomCode }),
-      onMessage: handleMessage,
-      onStatus: (status) => {
-        retryAt = status.retryAt || 0;
-        if (status.phase === "connected") {
-          show("#disconnect", false);
-          return;
-        }
-        if (status.phase === "waiting" || status.phase === "reconnecting") {
-          releaseControls();
-          voice.resetPeer();
-          show("#disconnect");
-          $("#disconnectTitle").textContent = "Восстанавливаем связь";
-          $("#disconnectText").textContent =
-            "Прогресс сохранён. Повторяем подключение автоматически. Сервер держит ваше место 90 секунд. Если сам хостинг выключен, подключиться получится только после его запуска.";
-          $("#reconnect").textContent = "Повторить сейчас ↻";
-        }
-        if (status.phase === "idle") show("#disconnect", false);
-      },
-      onTerminal: (text) => {
-        backToMenu();
-        notify(text, true);
-      },
-    });
-    connection.start();
-  } catch (e) {
-    backToMenu();
-    notify("Ошибка подключения: " + e.message, true);
-  }
-}
-function handleMessage(msg) {
-  if (msg.type === "welcome") {
-    const wasPlaying = playing;
-    slot = msg.slot;
-    playing = true;
-    joining = false;
-    lastShotTime = null;
-    voice.resetPeer();
-    show("#menu", false);
-    show("#hud");
-    show("#disconnect", false);
-    document.body.classList.add("playing");
-    menuDuo.forEach((m) => (m.visible = false));
-    closeModal();
-    if (!wasPlaying) {
-      cameraYaw = 0;
-      cameraPitch = 0;
-    }
-    updateMic();
-    resetJoin();
-    notify(
-      msg.resumed
-        ? "Связь восстановлена. Вы на прежнем месте."
-        : "Вы дома. Вид от первого лица. Откройте дверь и выходите на район.",
-    );
-  }
-  if (msg.type === "state") {
-    lastStateAt = performance.now();
-    state = msg;
-    self = msg.self;
-    syncActors();
-    updateHUD();
+    const old = new URL(store.get("di-server")),
+      fresh = new URL(
+        native ? import.meta.env.VITE_SERVER_URL : location.origin,
+      );
     if (
-      slot === 0 &&
-      msg.players.filter((p) => p.connected !== false).length === 2
+      old.hostname.endsWith(".e2b.app") &&
+      fresh.hostname.endsWith(".e2b.app")
     )
-      voice.offer();
-  }
-  if (msg.type === "notice") {
-    notify(msg.text);
-    if (/Куплено|выполнена|перечислено/.test(msg.text)) sound("buy");
-  }
-  if (msg.type === "signal") voice.receive(msg.data);
-  if (msg.type === "peerJoined") {
-    voice.resetPeer();
-    notify(
-      msg.resumed
-        ? "Напарник снова на связи."
-        : "Ваш напарник в квартале. Дружеский огонь отключён.",
-    );
-  }
-  if (msg.type === "peerLeft") {
-    voice.resetPeer();
-    notify(
-      msg.temporary
-        ? "У напарника прервалась связь. Держим его место 90 секунд."
-        : "Напарник вышел. Его вещи сохранены.",
-    );
-  }
+      store.set("di-server", fresh.origin);
+  } catch {}
+  store.set("nf-server-migrated", "3");
 }
-function resetJoin() {
-  $("#play").disabled = false;
-  $("#play").firstElementChild.textContent = "Играть";
+function serverURL() {
+  const raw =
+    store.get("di-server") ||
+    (native ? import.meta.env.VITE_SERVER_URL : location.origin) ||
+    import.meta.env.VITE_SERVER_URL;
+  if (!raw) throw Error("Укажите HTTPS-адрес сервера в настройках.");
+  const u = new URL(raw);
+  if (!["https:", "http:"].includes(u.protocol) || u.username || u.password)
+    throw Error("Нужен адрес http:// или https:// без логина и пароля.");
+  if (location.protocol === "https:" && u.protocol !== "https:")
+    throw Error("Для этой версии нужен HTTPS-сервер.");
+  return u.origin;
 }
-$("#play").onclick = join;
-$("#reconnect").onclick = () => connection?.retryNow();
-$("#disconnectExit").onclick = backToMenu;
-setInterval(() => {
-  $("#retryCountdown").textContent = retryAt
-    ? "Следующая попытка через " +
-      Math.max(0, Math.ceil((retryAt - Date.now()) / 1000)) +
-      " с"
-    : "Подключаемся к серверу…";
-}, 500);
-function backToMenu() {
-  playing = false;
-  joining = false;
-  releaseControls();
-  connection?.stop();
-  connection = null;
-  voice.close();
-  updateMic();
-  state = null;
-  self = null;
-  show("#hud", false);
-  show("#disconnect", false);
-  show("#menu");
-  document.body.classList.remove("playing");
-  actors.forEach((m) => scene.remove(m));
-  actors.clear();
-  npcActors.forEach((m) => scene.remove(m));
-  npcActors.clear();
-  menuDuo.forEach((m) => (m.visible = true));
-  city.update(null, true, 0.1);
-  closeModal();
+function notify(text) {
+  $("#toast").textContent = text;
+  $("#toast").hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => ($("#toast").hidden = true), 6500);
+}
+function send(m) {
+  return connection?.send(m);
+}
+const voice = new Voice(send, notify);
+function resetInput() {
+  keys.clear();
+  joystick = { x: 0, z: 0 };
+  fireHeld = false;
+  $("#stickKnob").style.transform = "";
+}
+function closeDialog() {
+  if ($("#dialog").open) $("#dialog").close();
+  resetInput();
+}
+function dialog(title, html, tag = "ПОЛЕВОЙ ТЕРМИНАЛ") {
+  resetInput();
   document.exitPointerLock?.();
-  health();
-  resetJoin();
+  $("#dialogTitle").textContent = title;
+  $("#dialogTag").textContent = tag;
+  $("#dialogBody").innerHTML = html;
+  if (!$("#dialog").open) $("#dialog").showModal();
+  $("#dialog").scrollTop = 0;
 }
-function syncActors() {
-  const ids = new Set(state.players.map((p) => p.id));
-  for (const [id, m] of actors)
-    if (!ids.has(id)) {
-      scene.remove(m);
-      actors.delete(id);
-    }
-  for (const p of state.players) {
-    let m = actors.get(p.id);
-    if (!m) {
-      m = character(p.slot ? "islam" : "deni");
-      m.position.set(p.x, 0, p.z);
-      scene.add(m);
-      actors.set(p.id, m);
-      if (p.id !== "self") {
-        const sprite = labelSprite(p.name.toUpperCase());
-        sprite.position.y = 2.6;
-        m.add(sprite);
+$("#closeDialog").onclick = closeDialog;
+$("#dialog").addEventListener("close", resetInput);
+function roleUI() {
+  for (const b of $$("[data-role]"))
+    b.classList.toggle("active", b.dataset.role === role);
+}
+for (const b of $$("[data-role]"))
+  b.onclick = () => {
+    role = b.dataset.role;
+    store.set("nf-role", role);
+    roleUI();
+  };
+roleUI();
+for (const b of $$("[data-open]")) b.onclick = () => openPanel(b.dataset.open);
+function openPanel(name) {
+  if (name === "settings") {
+    dialog(
+      "Настройки канала",
+      `<p>Оба игрока должны использовать один и тот же работающий сервер. Установка APK не запускает отдельный сервер. Временный preview не является круглосуточным хостингом.</p><label for="serverInput">HTTPS-адрес сервера</label><input id="serverInput" type="url" value="${esc(store.get("di-server") || (native ? import.meta.env.VITE_SERVER_URL || "" : location.origin))}" placeholder="https://ваш-сервер"><label for="codeInput">Код комнаты (если задан владельцем сервера)</label><input id="codeInput" type="password" value="${esc(store.get("di-room"))}" autocomplete="off"><label for="sensitivity">Чувствительность обзора</label><input id="sensitivity" type="range" min="0.4" max="2" step="0.1" value="${sensitivity}"><label for="quality">Графика</label><select id="quality"><option value="low">Экономичная — для телефона</option><option value="high">Высокая — ближние деревья детальнее</option></select><label><input id="soundInput" type="checkbox" style="width:auto" ${sound ? "checked" : ""}> Звуки леса и действий</label><button id="testServer" class="primary">ПРОВЕРИТЬ СЕРВЕР ↗</button><p id="diagnostic"></p><button id="saveSettings" class="primary">СОХРАНИТЬ И ВЕРНУТЬСЯ</button>`,
+    );
+    $("#quality").value =
+      world?.quality ||
+      store.get(
+        "nf-quality",
+        matchMedia("(pointer:coarse)").matches ? "low" : "high",
+      );
+    $("#testServer").onclick = async () => {
+      const e = $("#diagnostic");
+      e.textContent = "Проверяем HTTP и WebSocket…";
+      try {
+        const u = new URL($("#serverInput").value).origin;
+        const h = await health(u);
+        if (h.version !== "0.3.0")
+          throw Error(
+            "Сервер старой версии " + h.version + ". Нужна Survival 0.3.",
+          );
+        await probeSocket(u);
+        e.textContent = `Сервер 0.3 доступен. WebSocket работает. Онлайн ${h.players}/2, зарезервировано ${h.reserved}.`;
+      } catch (e2) {
+        e.textContent =
+          e2.message + " Проверьте адрес, интернет и запущен ли сервер.";
       }
-    }
-    m.userData.net = p;
-  }
-  const npcIds = new Set(state.npcs.map((n) => n.id));
-  for (const [id, m] of npcActors)
-    if (!npcIds.has(id)) {
-      scene.remove(m);
-      npcActors.delete(id);
-    }
-  for (const n of state.npcs) {
-    let m = npcActors.get(n.id);
-    if (!m) {
-      m = character(n.type);
-      m.position.set(n.x, 0, n.z);
-      if (n.type === "guard") {
-        const baton = box(m.userData.held, 0.06, 0.6, 0.06, 0, 0, 0, "#2e382f");
-        baton.rotation.x = 0.3;
+    };
+    $("#saveSettings").onclick = () => {
+      const prev = store.get("di-server");
+      try {
+        const u = new URL($("#serverInput").value);
+        if (
+          !["http:", "https:"].includes(u.protocol) ||
+          u.username ||
+          u.password
+        )
+          throw Error();
+        store.set("di-server", u.origin);
+      } catch {
+        notify("Введите корректный HTTP(S)-адрес сервера.");
+        return;
       }
-      scene.add(m);
-      npcActors.set(n.id, m);
-    }
-    m.userData.net = n;
-  }
+      store.set("di-room", $("#codeInput").value);
+      sensitivity = +$("#sensitivity").value;
+      store.set("nf-sensitivity", sensitivity);
+      world.quality = $("#quality").value;
+      store.set("nf-quality", world.quality);
+      sound = $("#soundInput").checked;
+      store.set("nf-sound", sound ? "on" : "off");
+      if (audio) audio.volume = sound ? 0.22 : 0;
+      world.resize();
+      closeDialog();
+      if (playing && prev !== store.get("di-server")) leave();
+      checkServer();
+    };
+  } else if (name === "help") {
+    dialog(
+      "Полевой справочник",
+      `<p>Это новая survival-альфа. Банков, магазинов, валюты и работ больше нет. Открытая территория — 1024 × 1024 метра. Два реальных выживших, общие припасы и противники. Дружественный огонь отключён.</p><h3>01 / Первые минуты</h3><p>Убежище защищает от холода, но не кормит. Снаружи, у палатки, находится погасший костёр. Добавьте древесину. Сухостой, камни и ягоды лежат вокруг лагеря. Подойдите и нажмите действие; не двигайтесь, пока собираете ресурс.</p><h3>02 / Не замёрзнуть</h3><p>Следите за едой, водой и теплом. Бег расходует выносливость и ускоряет расход припасов. Костёр согревает, отпугивает волков и позволяет готовить мясо и кипятить речную воду. На это тоже нужны дрова.</p><h3>03 / Снаряжение</h3><p>Консервы, воду, бинты и аптечки используйте из рюкзака. Там же вкладка «Создание»: копьё, бинты, полевой костёр, приготовление еды и воды. Общий ящик стоит у выхода из убежища. После гибели припасы остаются в рюкзаке на месте смерти на 20 минут.</p><h3>04 / Последняя частота</h3><p>Радиодетали спрятаны на лесопилке, насосной и в бункере. Отнесите три детали, четыре единицы металлолома и канистру топлива к вышке связи. Каждый игрок может внести свою часть. Карта показывает места; нажмите на неё, чтобы поставить маршрутную метку.</p><h3>05 / Охота и опасности</h3><p>Олени убегают; волки нападают и боятся огня. Мародёры вооружены. На лесопилке есть дробовик, на блокпосту — пистолет. Найденное оружие нужно зарядить. Цельтесь по высоте: рельеф и стены мешают стрельбе.</p><h3>06 / Управление</h3><p><span class="guide-key">Телефон:</span> джойстик слева; обзор — провести справа. Круг ◎ — удар/огонь, РУКА — действие, R — перезарядка, ↑ — прыжок. БЕГ включает ускорение. Кнопки карты и рюкзака — сверху справа.</p><p><span class="guide-key">Компьютер:</span> WASD — движение, мышь — обзор (нажмите на мир), Shift — бег, ЛКМ — удар/огонь, E — действие, R — перезарядка, Space — прыжок, 1–4 — оружие, Tab — рюкзак, M — карта, Esc — освободить мышь/закрыть окно.</p><h3>07 / Подключение</h3><p>В настройках есть проверка HTTP и WebSocket с понятной ошибкой. Оба игрока указывают одинаковый HTTPS-адрес и выбирают разные профили. При обрыве приложение повторяет вход, сервер сохраняет место 90 секунд. Если сам сервер выключен, переподключение его не запустит. Для постоянной доступности нужен отдельный хост.</p><p>iPhone: открыть ссылку в Safari → Поделиться → На экран «Домой». Это PWA, не IPA. Требуется современный браузер/WebView с WebGL 2. Реальный смартфон ещё не проходил ручной тест.</p>`,
+    );
+  } else if (name === "credits") {
+    dialog(
+      "Северный рубеж / 0.3",
+      `<p>Новая кооперативная survival-альфа проекта Deni / Islam. Three.js + авторитетный Node.js-сервер. Не коммерчески законченная игра и не заявка на AAA.</p><h3>Модели</h3><p>Quaternius — CC0 1.0: Survival Pack, Nature Pack, Animals Pack, Modular Men, Buildings Pack 2. Получены из trebeljahr/quaternius-showcase. Анимации животных — авторские анимации пакета; движения людей — процедурные.</p><h3>Окружение и звук</h3><p>Babylon.js Assets contributors — CC BY 4.0: лесной HDR, деревья и LOD-атласы, карты коры, грунта, травы и пены, winterWoods.mp3. Изменения: адаптация Babylon-геометрии в Three.js, освещение и материалы; уменьшение GPU-разрешения текстур на телефоне. Все файлы реально используются сценой или звуком.</p><p><a href="./CREDITS.md" target="_blank" rel="noopener">Полная атрибуция и ссылки на лицензии ↗</a></p><p>Шрифты Oswald и Manrope — SIL Open Font License. Three.js и прочие зависимости — по своим лицензиям. Манифест ассетов с исходниками, размером и Git SHA находится в assets/manifest.json.</p>`,
+    );
+  } else if (name === "pause") {
+    dialog(
+      "На привале",
+      `<p>Общий мир не ставится на паузу. Отдыхайте в убежище или у костра.</p><div class="dialog-actions"><button data-panel="bag">РЮКЗАК</button><button data-panel="map">КАРТА</button><button data-panel="help">СПРАВОЧНИК</button><button data-panel="settings">НАСТРОЙКИ</button></div><button id="resume" class="primary">ВЕРНУТЬСЯ В ЛЕС ↗</button><button id="leave" class="primary">СОХРАНИТЬ И ВЫЙТИ</button>`,
+    );
+    $$("[data-panel]").forEach(
+      (b) => (b.onclick = () => openPanel(b.dataset.panel)),
+    );
+    $("#resume").onclick = closeDialog;
+    $("#leave").onclick = leave;
+  } else if (name === "bag" || name === "stash") {
+    if (!self) return;
+    tab = name === "stash" ? "stash" : "inventory";
+    showBag();
+  } else if (name === "map") showMap();
 }
-function labelSprite(text) {
-  const cvs = document.createElement("canvas");
-  cvs.width = 256;
-  cvs.height = 64;
-  const ctx = cvs.getContext("2d");
-  ctx.fillStyle = "#16271dc9";
-  ctx.fillRect(0, 0, 256, 64);
-  ctx.fillStyle = "#d5ef6a";
-  ctx.font = "bold 26px Arial";
-  ctx.textAlign = "center";
-  ctx.fillText(text, 128, 42);
-  const s = new THREE.Sprite(
-    new THREE.SpriteMaterial({
-      map: new THREE.CanvasTexture(cvs),
-      depthTest: false,
-    }),
-  );
-  s.scale.set(1.7, 0.43, 1);
-  return s;
-}
-function updateHUD() {
-  if (!self) return;
-  $("#balance").textContent = Math.floor(self.balance).toLocaleString("ru-RU");
-  $("#hp").textContent = Math.ceil(self.hp);
-  $("#stamina").textContent = Math.ceil(self.stamina);
-  $("#hpBar").style.width = self.hp + "%";
-  $("#staminaBar").style.width = self.stamina + "%";
-  $("#playerName").textContent = slot ? "ISLAM" : "DENI";
-  $("#sessionPlayers").textContent =
-    `В СЕТИ · ${state.players.filter((p) => p.connected !== false).length}/2`;
-  $("#wanted").textContent =
-    "★".repeat(self.wanted) + "☆".repeat(5 - self.wanted);
-  $("#wanted").style.color = self.wanted ? "#efd179" : "#a6b39a";
-  const me = state.players.find((p) => p.id === "self");
-  $("#district").textContent = inside(me, WORLD.home)
-    ? "ДОМ · БЕЗОПАСНОЕ МЕСТО"
-    : inside(me, WORLD.bank)
-      ? "НАРОДНЫЙ БАНК"
-      : inside(me, WORLD.shop)
-        ? "АРСЕНАЛ"
-        : "СТАРЫЙ КВАРТАЛ";
-  if (self.job) {
-    $("#missionTitle").textContent = `Подработка · ${self.job.count}/3`;
-    $("#missionText").textContent =
-      self.job.stage === "carry"
-        ? "Отнесите ящик к фургону у склада."
-        : "Возьмите следующий ящик у склада.";
-  } else if (self.wanted) {
-    $("#missionTitle").textContent = "Залечь на дно";
-    $("#missionText").textContent =
-      "Скройтесь из виду. Закройте дверь дома и переждите погоню.";
-  } else if (
-    self.inventory.includes("pistol") ||
-    self.inventory.includes("smg")
-  ) {
-    $("#missionTitle").textContent = "Большой план";
-    $("#missionText").textContent =
-      "Деньги в глубине банка. Следите за взглядом охраны.";
-  } else {
-    $("#missionTitle").textContent = "Сначала — на район";
-    $("#missionText").textContent =
-      "У склада есть работа. Заработайте на снаряжение.";
-  }
-  const inventory = [
-    "fist",
-    ...self.inventory,
-    ...(self.bundles ? ["cash"] : []),
-  ];
-  const key = JSON.stringify([
-    inventory,
-    self.selected,
-    self.bundles,
-    self.bagCash,
-  ]);
-  if (lastHotbar !== key) {
-    lastHotbar = key;
-    $("#hotbar").innerHTML = inventory
+function showBag() {
+  const inv = self.inventory,
+    html = `<div class="bag-tabs"><button data-tab="inventory" class="${tab === "inventory" ? "active" : ""}">РЮКЗАК</button><button data-tab="craft" class="${tab === "craft" ? "active" : ""}">СОЗДАНИЕ</button><button data-tab="stash" class="${tab === "stash" ? "active" : ""}">ОБЩИЙ ЯЩИК</button></div>`;
+  let body = "";
+  if (tab === "craft") {
+    body = Object.entries(RECIPES)
       .map(
-        (item, i) =>
-          `<button class="slot ${item === self.selected ? "active" : ""}" data-item="${item}" title="${item === "fist" ? "Кулак" : item === "cash" ? "Пачки денег" : ITEMS[item]?.name}"><small>${i + 1}</small>${icon(item)}${item === "cash" ? `<span class="count">${self.bundles}</span>` : item === "bag" && self.bagCash ? '<span class="count">₽</span>' : ""}</button>`,
+        ([id, r]) =>
+          `<div class="recipe"><div><strong>${r.name}</strong><p>${Object.entries(
+            r.cost,
+          )
+            .map(([k, n]) => `${ITEMS[k].name} ${inv[k] || 0}/${n}`)
+            .join(
+              " · ",
+            )}${r.fire ? " · у огня" : ""}</p></div><button data-craft="${id}">СОЗДАТЬ</button></div>`,
       )
       .join("");
-    $$("#hotbar button").forEach(
-      (e) =>
-        (e.onclick = () => {
-          send({ type: "select", item: e.dataset.item });
-          if (
-            e.dataset.item === self.selected &&
-            ["cash", "bag", "medkit"].includes(e.dataset.item)
+  } else {
+    const stash = tab === "stash";
+    if (stash && dist(self, WORLD.stash) > 4)
+      body =
+        "<p>Общий ящик находится у выхода из убежища. Подойдите, чтобы обменяться припасами с напарником.</p>";
+    else {
+      const items = stash ? state.stash : inv;
+      body =
+        '<div class="inventory-grid">' +
+        Object.entries(items)
+          .filter(([k, n]) => n > 0 && ITEMS[k])
+          .map(
+            ([k, n]) =>
+              `<div class="item"><b>${ITEMS[k].name}</b><em>${n}</em>${stash ? `<button data-take="${k}">ЗАБРАТЬ ВСЁ</button>` : ITEMS[k].kind === "weapon" ? `<button data-equip="${k}">В РУКИ</button>` : ITEMS[k].kind === "use" ? `<button data-use="${k}">ИСПОЛЬЗОВАТЬ</button>` : "<span></span>"}${!stash && dist(self, WORLD.stash) < 4 ? `<button data-store="${k}">В ОБЩИЙ ЯЩИК</button>` : ""}</div>`,
           )
-            setTimeout(openItem, 50);
-        }),
-    );
-  }
-  const gun = ITEMS[self.selected];
-  $("#ammoReadout").innerHTML = gun?.mag
-    ? `<b>${self.mag[self.selected]}</b> <span class="muted">/ ${self.ammo}</span>${self.reload ? " · ПЕРЕЗАРЯДКА" : ""}`
-    : self.selected === "bag"
-      ? `В СУМКЕ · ${self.bagCash.toLocaleString("ru-RU")} ₽`
-      : self.selected === "cash"
-        ? "5 ПАЧЕК · E ПЕРЕЧИСЛИТЬ"
-        : "";
-  show("#spawnBanner", self.sleep > 0);
-  show("#lootProgress", !!self.loot);
-  if (self.loot) {
-    $("#lootTimer").textContent =
-      `${Math.floor(self.loot.elapsed)} / ${self.loot.duration} c`;
-    $("#lootProgress em").style.width =
-      (self.loot.elapsed / self.loot.duration) * 100 + "%";
-  }
-  if (modalKind === "locker") renderLocker();
-  if (modalKind === "bag") renderBag();
-}
-function interactionAt() {
-  if (!self || !state) return null;
-  const p = state.players.find((p) => p.id === "self");
-  if (!p) return null;
-  if (dist(p, { x: WORLD.home.doorX, z: WORLD.home.doorZ }) < 3.4)
-    return {
-      kind: "door",
-      title: state.door ? "Закрыть дверь" : "Открыть дверь",
-      sub: "Ваш общий дом · спрячьтесь от полиции",
-    };
-  if (dist(p, WORLD.lockers[slot]) < 3)
-    return {
-      kind: "locker",
-      title: "Личный шкаф · " + (slot ? "ISLAM" : "DENI"),
-      sub: "15 мест · содержимое сохраняется после смерти",
-    };
-  if (dist(p, WORLD.loot) < 3)
-    return {
-      kind: "loot",
-      title: "Удерживайте, чтобы взять деньги",
-      sub:
-        self.selected === "bag"
-          ? "Сумка · 30 секунд · до 50 000 ₽"
-          : "Голыми руками · 15 секунд · 5 пачек",
-    };
-  if (inside(p, WORLD.shop) && dist(p, { x: 24, z: 18.5 }) < 7)
-    return {
-      kind: "shop",
-      title: "Арсенал · открыть каталог",
-      sub: "Оружие, патроны, сумка и аптечки",
-    };
-  if (
-    self.job &&
-    dist(p, self.job.stage === "carry" ? WORLD.truck : WORLD.job) < 4
-  )
-    return {
-      kind: "work",
-      title:
-        self.job.stage === "carry" ? "Положить ящик в фургон" : "Взять ящик",
-      sub: `Подработка · доставлено ${self.job.count}/3`,
-    };
-  if (!self.job && dist(p, WORLD.job) < 5)
-    return {
-      kind: "job",
-      title: "Помочь с погрузкой",
-      sub: "3 ящика · оплата от 140 до 519 ₽",
-    };
-  if (["bag", "cash", "medkit"].includes(self.selected))
-    return {
-      kind: "item",
-      title:
-        self.selected === "bag"
-          ? "Посмотреть содержимое сумки"
-          : self.selected === "cash"
-            ? "Перечислить деньги на баланс"
-            : "Использовать аптечку",
-      sub:
-        self.selected === "bag"
-          ? "Вывести часть суммы или всё"
-          : "Выбранный предмет",
-    };
-  return null;
-}
-function interact(down = true) {
-  if (!down) {
-    if (holdingLoot) {
-      send({ type: "lootStop" });
-      holdingLoot = false;
+          .join("") +
+        "</div>";
+      if (!Object.values(items).some((n) => n > 0))
+        body += "<p>Пока пусто. Осмотрите ближайшие строения.</p>";
     }
-    return;
   }
-  if (!playing || modalKind) return;
-  if (!interaction) return;
-  switch (interaction.kind) {
-    case "door":
-      send({ type: "door" });
-      break;
-    case "locker":
-      openModal("Личный шкаф", "locker");
-      renderLocker();
-      break;
-    case "shop":
-      openShop();
-      break;
-    case "job":
-      send({ type: "job" });
-      break;
-    case "work":
-      send({ type: "interactJob" });
-      break;
-    case "loot":
-      if (!holdingLoot) {
-        holdingLoot = true;
-        send({ type: "lootStart" });
-      }
-      break;
-    case "item":
-      openItem();
-      break;
-  }
-}
-function openItem() {
-  if (!self) return;
-  if (self.selected === "bag") {
-    openModal("Спортивная сумка", "bag");
-    renderBag();
-  } else if (self.selected === "cash") send({ type: "deposit" });
-  else if (self.selected === "medkit") send({ type: "heal" });
-}
-function openModal(title, kind, body = "") {
-  document.exitPointerLock?.();
-  modalKind = kind;
-  $("#modalTitle").textContent = title;
-  $("#modalBody").innerHTML = body;
-  show("#modal");
-  releaseControls();
-}
-function closeModal() {
-  show("#modal", false);
-  modalKind = "";
-}
-$("#closeModal").onclick = closeModal;
-$("#modal").onclick = (e) => {
-  if (e.target === $("#modal")) closeModal();
-};
-const helpHTML = `<div class="modal-copy"><h3>Один квартал. Двое своих.</h3><p>Выберите разных персонажей и зайдите на <b>один и тот же адрес сервера</b>. Deni и Islam просыпаются в двух кроватях общего дома. Сервер рассчитан ровно на двух человек. При обрыве интернет-связи вход повторяется автоматически: место, координаты и текущая вылазка сохраняются 90 секунд. Дольше — обычный вход из сохранения дома. Перезапуск или выключение хостинга нельзя исправить переподключением. Урон друг другу отключён.</p><h3>Управление</h3><p><kbd>W A S D</kbd> — ходить · <kbd>Shift</kbd> — бежать · <kbd>E</kbd> — действие (удерживать у денег) · <kbd>R</kbd> — перезарядка · <kbd>1–6</kbd> — предмет · <kbd>M</kbd> — карта · <kbd>Esc</kbd> — меню. Кликните по игре для захвата мыши: движение мыши — взгляд от первого лица, ЛКМ — атака. Без захвата можно зажать ПКМ и осмотреться. Esc освобождает мышь.</p><p>На телефоне: левый джойстик — движение; свайп по свободной правой части экрана — камера. <b>◎</b> — атака, <b>↻</b> — перезарядка, <b>ϟ</b> — включить/выключить бег. Стреляя, двигайте пальцем по кнопке ◎ — можно одновременно целиться. Формат — горизонтальный; для поворота используйте кнопку ⛶. Кнопку действия у денег нужно удерживать. Удобнее играть горизонтально.</p><h3>С чего начать</h3><ol><li>Откройте дверь дома и найдите склад (значок Я на карте). Перенесите три ящика к фургону — получите случайную оплату.</li><li>В «Арсенале» купите оружие, затем отдельно патроны. Возьмите оружие и перезарядите. Сумка стоит 450 ₽.</li><li>В банке нельзя показывать оружие. Два охранника смотрят вперёд: проберитесь к деньгам, пока они отвернулись.</li><li>Кулаком можно собрать пять пачек за 15 секунд; с сумкой в руках — до 50 000 ₽ за 30 секунд. Выберите добычу и перечислите её на баланс.</li><li>За преступления растёт розыск. Полиция преследует каждого отдельно. Скройтесь за стенами, закройте дверь — звёзды начинают уходить через 18 секунд без наблюдения.</li></ol><h3>Сохранения и голос</h3><p>Баланс, инвентарь и два личных шкафа хранятся <b>на сервере</b>. Сохраняйте данные браузера: профиль привязан к этому устройству. При смерти теряются вещи и боезапас; баланс и содержимое вашего шкафа остаются. При входе вы всегда дома.</p><p>Голос включается галочкой перед входом. Можно выключить микрофон кнопкой MIC или выйти из игры. Браузер сам решает, спрашивать ли разрешение повторно. Для голоса через некоторые мобильные сети владельцу сервера нужен TURN.</p><div class="alpha-note">ALPHA 0.1 · Вымышленный мультяшный мир. Это первый игровой прототип: персонажи и оружие — стилизованные процедурные 3D-модели. Одна комната, без матчмейкинга. Кража — исключительно игровая механика. 16+.</div></div>`;
-$("#helpBtn").onclick = () =>
-  openModal("Как устроен квартал", "help", helpHTML);
-$("#aboutBtn").onclick = () =>
-  openModal("Двое против квартала", "about", helpHTML);
-function pause() {
-  if (!playing) return;
-  openModal(
-    "Квартал не спит",
-    "pause",
-    `<div class="modal-copy"><p>Онлайн-игра не останавливается, пока вы в меню. Для безопасности вернитесь домой.</p></div><div class="modal-actions"><button id="resume" class="primary">Продолжить ↗</button><button id="controls" class="secondary">Управление и об игре</button><button id="displaySettings" class="secondary">Экран и чувствительность</button><button id="exit" class="secondary danger">Сохранить и выйти</button></div>`,
-  );
-  $("#resume").onclick = closeModal;
-  $("#controls").onclick = () =>
-    openModal("Как устроен квартал", "help", helpHTML);
-  $("#exit").onclick = backToMenu;
-  $("#displaySettings").onclick = openDisplaySettings;
-}
-$("#pauseBtn").onclick = pause;
-$("#settingsBtn").onclick = () => {
-  openModal(
-    "Подключение",
-    "settings",
-    `<div class="modal-copy"><p>У обоих игроков должен быть один адрес сервера. HTTPS обязателен для микрофона и игры с iPhone. GitHub Pages — только клиент, сервер запускается отдельно.</p></div><label class="field">АДРЕС СЕРВЕРА (HTTPS)<input id="serverInput" type="url" placeholder="https://your-server.example"></label><label class="field">КОД КОМНАТЫ (если задан владельцем)<input id="roomInput" type="password" maxlength="80" autocomplete="off"></label><div class="modal-actions"><button id="saveSettings" class="primary">Сохранить ↗</button><button id="resetSettings" class="secondary">Сервер по умолчанию</button></div><p class="alpha-note">Сервер нужно держать включённым. Не удаляйте данные приложения: они содержат ключ вашего профиля. Для публичного хостинга задайте ROOM_CODE на сервере.</p>`,
-  );
-  $("#serverInput").value = serverBase;
-  $("#roomInput").value = roomCode;
-  $("#saveSettings").onclick = () => {
-    try {
-      const u = new URL($("#serverInput").value);
-      if (!["https:", "http:"].includes(u.protocol) || u.username || u.password)
-        throw Error();
-      if (location.protocol === "https:" && u.protocol !== "https:")
-        return notify("Для этой страницы нужен HTTPS-сервер.", true);
-      serverBase = u.origin;
-      roomCode = $("#roomInput").value;
-      store.set("di-server", serverBase);
-      store.set("di-room", roomCode);
-      closeModal();
-      health();
-    } catch {
-      notify("Введите корректный HTTPS-адрес сервера.", true);
-    }
-  };
-  $("#resetSettings").onclick = () => {
-    $("#serverInput").value =
-      import.meta.env.VITE_SERVER_URL || location.origin;
-  };
-};
-const thumbs = {};
-function makeThumbnails() {
-  const r = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  r.setSize(360, 190);
-  r.setPixelRatio(1);
-  r.outputColorSpace = THREE.SRGBColorSpace;
-  r.toneMapping = THREE.ACESFilmicToneMapping;
-  const s = new THREE.Scene();
-  s.add(new THREE.HemisphereLight("#eef0ce", "#485c42", 3));
-  const l = new THREE.DirectionalLight("#ffecba", 4);
-  l.position.set(1, 3, 4);
-  s.add(l);
-  const cam = new THREE.PerspectiveCamera(38, 360 / 190, 0.01, 20);
-  cam.position.set(1, 0.65, 1.35);
-  cam.lookAt(0, 0.06, 0);
-  for (const item of Object.keys(ITEMS)) {
-    const m = weaponModel(item, true);
-    m.scale.setScalar(item === "ammo" ? 2 : 1.4);
-    s.add(m);
-    r.render(s, cam);
-    thumbs[item] = r.domElement.toDataURL("image/png");
-    s.remove(m);
-  }
-  r.dispose();
-  r.forceContextLoss();
-}
-function openShop() {
-  if (!self) return;
-  openModal(
-    "Арсенал",
-    "shop",
-    `<div class="shop-balance">ВАШ БАЛАНС · <b id="shopMoney">${self.balance.toLocaleString("ru-RU")} ₽</b> <span class="muted"> / ПАТРОНЫ ПРОДАЮТСЯ ОТДЕЛЬНО</span></div><div class="shop-grid">${Object.entries(
-      ITEMS,
-    )
-      .map(
-        ([id, it]) =>
-          `<article class="shop-item"><img src="${thumbs[id]}" alt="3D-модель: ${it.name}"><h3>${it.name}</h3><p>${it.description}</p><button data-buy="${id}">Купить · ${it.price.toLocaleString("ru-RU")} ₽</button></article>`,
-      )
-      .join("")}</div>`,
-  );
-  $$("[data-buy]").forEach(
-    (el) =>
-      (el.onclick = () => {
-        send({ type: "buy", item: el.dataset.buy });
-        setTimeout(() => {
-          if ($("#shopMoney") && self)
-            $("#shopMoney").textContent =
-              self.balance.toLocaleString("ru-RU") + " ₽";
-        }, 200);
+  const scroll = $("#dialog").scrollTop;
+  dialog("Полевое снаряжение", html + body, "СНАРЯЖЕНИЕ / DENI + ISLAM");
+  $("#dialog").scrollTop = scroll;
+  $$("[data-tab]").forEach(
+    (b) =>
+      (b.onclick = () => {
+        tab = b.dataset.tab;
+        showBag();
       }),
   );
-}
-let lockerKey = "";
-function renderLocker() {
-  if (!self) return;
-  const key = JSON.stringify([self.inventory, self.locker]);
-  if (lockerKey === key && $("#lockerContent")) return;
-  lockerKey = key;
-  $("#modalBody").innerHTML =
-    `<div id="lockerContent" class="locker-columns"><section><h3>В карманах · ${self.inventory.length}/10</h3>${self.inventory.length ? self.inventory.map((item, i) => `<div class="item-row"><span>${ITEMS[item]?.name}</span><button data-store="${i}">Положить →</button></div>`).join("") : '<p class="modal-copy">Пока пусто. Предметы можно купить в Арсенале.</p>'}</section><section><h3>Ваш шкаф · ${self.locker.length}/15</h3>${self.locker.length ? self.locker.map((entry, i) => `<div class="item-row"><span>${ITEMS[entry.item]?.name}${entry.cash ? " · " + entry.cash + " ₽" : ""}</span><button data-take="${i}">← Забрать</button></div>`).join("") : '<p class="modal-copy">Здесь вещи переживут любую неудачную вылазку.</p>'}</section></div><p class="alpha-note">Личный шкаф ${slot ? "ISLAM" : "DENI"}. Оружие сохраняется с заряженным магазином, сумка — с деньгами. Запасные патроны остаются в карманах.</p>`;
-  $$("[data-store]").forEach(
-    (e) =>
-      (e.onclick = () =>
-        send({
-          type: "locker",
-          direction: "store",
-          index: Number(e.dataset.store),
-        })),
+  $$("[data-craft]").forEach(
+    (b) => (b.onclick = () => send({ type: "craft", recipe: b.dataset.craft })),
+  );
+  $$("[data-equip]").forEach(
+    (b) =>
+      (b.onclick = () => {
+        send({ type: "select", item: b.dataset.equip });
+        closeDialog();
+      }),
+  );
+  $$("[data-use]").forEach(
+    (b) => (b.onclick = () => send({ type: "use", item: b.dataset.use })),
   );
   $$("[data-take]").forEach(
-    (e) =>
-      (e.onclick = () =>
+    (b) =>
+      (b.onclick = () =>
         send({
-          type: "locker",
+          type: "stash",
+          item: b.dataset.take,
           direction: "take",
-          index: Number(e.dataset.take),
+          amount: 99,
         })),
   );
+  $$("[data-store]").forEach(
+    (b) =>
+      (b.onclick = () =>
+        send({
+          type: "stash",
+          item: b.dataset.store,
+          direction: "store",
+          amount: 99,
+        })),
+  );
+  lastBag = JSON.stringify([self.inventory, state.stash]);
 }
-function renderBag() {
+function showMap() {
   if (!self) return;
-  if (!$("#bagTotal")) {
-    $("#modalBody").innerHTML =
-      '<div class="modal-copy"><p>Сумма внутри сумки</p><h2 id="bagTotal"></h2><p>Можно вывести всю сумму или только часть. Выведенные деньги останутся на балансе даже после смерти.</p></div><div class="withdraw"><input id="withdrawAmount" type="number" min="1" step="1" placeholder="Сумма"><button id="withdrawPart" class="secondary">Перечислить</button><button id="withdrawAll" class="secondary">Всё</button></div>';
-    $("#withdrawPart").onclick = () => {
-      const amount = Math.floor(Number($("#withdrawAmount").value));
-      if (!amount || amount < 1) return notify("Укажите положительную сумму.");
-      send({ type: "deposit", amount });
+  dialog(
+    "Карта северного сектора",
+    '<canvas id="mapCanvas" width="720" height="720"></canvas><p class="map-legend">△ Вы · ○ Убежище · ◇ Объекты · Нажмите на карту — поставить метку. Территория: 1 км².</p>',
+    "НАВИГАЦИЯ / СЕВЕР ↑",
+  );
+  const c = $("#mapCanvas"),
+    g = c.getContext("2d"),
+    scale = 680 / 1024,
+    xy = (x) => 20 + (x + 512) * scale;
+  g.fillStyle = "#1e3028";
+  g.fillRect(0, 0, 720, 720);
+  for (let x = -512; x < 512; x += 16)
+    for (let z = -512; z < 512; z += 16) {
+      const h = heightAt(x, z);
+      g.fillStyle = `rgb(${30 + h * 0.5},${48 + h * 0.7},${39 + h * 0.5})`;
+      g.fillRect(xy(x), xy(z), 12, 12);
+    }
+  g.strokeStyle = "#8da78625";
+  g.lineWidth = 0.5;
+  for (let i = 20; i <= 700; i += 68) {
+    g.beginPath();
+    g.moveTo(i, 20);
+    g.lineTo(i, 700);
+    g.moveTo(20, i);
+    g.lineTo(700, i);
+    g.stroke();
+  }
+  g.strokeStyle = "#6a999b";
+  g.lineWidth = 5;
+  g.beginPath();
+  for (let z = -512; z <= 512; z += 8) g.lineTo(xy(WORLD.riverX(z)), xy(z));
+  g.stroke();
+  // Marching-squares topographic contours: terrain and map use identical heights.
+  g.strokeStyle = "#c7c7a022";
+  g.lineWidth = 0.7;
+  for (let level = -12; level <= 21; level += 3)
+    for (let x = -512; x < 512; x += 20)
+      for (let z = -512; z < 512; z += 20) {
+        const corners = [
+            [x, z],
+            [x + 20, z],
+            [x + 20, z + 20],
+            [x, z + 20],
+          ],
+          points = [];
+        for (let i = 0; i < 4; i++) {
+          const a = corners[i],
+            b = corners[(i + 1) % 4],
+            ha = heightAt(...a),
+            hb = heightAt(...b);
+          if (ha < level !== hb < level) {
+            const t = (level - ha) / (hb - ha);
+            points.push([
+              xy(a[0] + (b[0] - a[0]) * t),
+              xy(a[1] + (b[1] - a[1]) * t),
+            ]);
+          }
+        }
+        if (points.length >= 2) {
+          g.beginPath();
+          g.moveTo(...points[0]);
+          g.lineTo(...points[1]);
+          g.stroke();
+        }
+      }
+  g.font = "12px Manrope";
+  for (const p of POIS) {
+    g.fillStyle = p.id === "camp" ? "#dca060" : "#c6d0b3";
+    g.beginPath();
+    g.arc(xy(p.x), xy(p.z), 5, 0, 7);
+    g.fill();
+    g.fillText(p.name, xy(p.x) + 10, xy(p.z) - 8);
+  }
+  for (const p of state.players) {
+    g.save();
+    g.translate(xy(p.x), xy(p.z));
+    g.rotate(-p.yaw);
+    g.fillStyle = p.id === "self" ? "#f1bd79" : "#90c7c5";
+    g.beginPath();
+    g.moveTo(0, 8);
+    g.lineTo(-5, -6);
+    g.lineTo(5, -6);
+    g.closePath();
+    g.fill();
+    g.restore();
+  }
+  g.fillStyle = "#adbca0";
+  g.font = "14px Oswald";
+  g.fillText("С", 687, 15);
+  g.font = "10px Manrope";
+  g.fillText("СЕКТОР 04 / 1:1500", 24, 713);
+  c.onclick = (e) => {
+    const r = c.getBoundingClientRect();
+    waypoint = {
+      x: (((e.clientX - r.left) / r.width) * 720 - 20) / scale - 512,
+      z: (((e.clientY - r.top) / r.height) * 720 - 20) / scale - 512,
+      name: "Метка на карте",
     };
-    $("#withdrawAll").onclick = () => send({ type: "deposit" });
-  }
-  $("#bagTotal").textContent = self.bagCash.toLocaleString("ru-RU") + " ₽";
-}
-function updateMic() {
-  $("#micBtn").textContent = voice.enabled ? "MIC ●" : "MIC ×";
-  $("#micBtn").classList.toggle("active", voice.enabled);
-}
-$("#micBtn").onclick = async () => {
-  if (voice.stream) {
-    voice.mute();
-    updateMic();
-    return;
-  }
-  $("#remoteAudio")
-    .play()
-    .catch(() => {});
-  notify(
-    "Для передачи голоса поставьте галочку «Голосовой чат» в меню перед входом. Сейчас можно слушать напарника.",
-  );
-};
-function drawMap(canvas, big = false) {
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d"),
-    w = canvas.width,
-    h = canvas.height;
-  ctx.fillStyle = "#18271e";
-  ctx.fillRect(0, 0, w, h);
-  const scale = Math.min(w / 123, h / 105),
-    ox = w / 2,
-    oz = h / 2;
-  const pos = (x, z) => [ox + x * scale, oz + z * scale];
-  const rect = (b, color) => {
-    ctx.fillStyle = color;
-    ctx.fillRect(
-      ox + (b.x - b.w / 2) * scale,
-      oz + (b.z - b.d / 2) * scale,
-      b.w * scale,
-      b.d * scale,
-    );
+    closeDialog();
+    notify("Маршрутная метка установлена.");
   };
-  rect({ x: 0, z: -2, w: 120, d: 12 }, "#324334");
-  rect({ x: 12, z: 0, w: 12, d: 100 }, "#324334");
-  for (const [name, b] of Object.entries({
-    ДОМ: WORLD.home,
-    БАНК: WORLD.bank,
-    АРСЕНАЛ: WORLD.shop,
-  })) {
-    rect(
-      b,
-      name === "ДОМ" ? "#70815d" : name === "БАНК" ? "#b1a577" : "#6a8270",
-    );
-    if (big) {
-      ctx.fillStyle = "#e6eacd";
-      ctx.font = "bold 12px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText(name, ...pos(b.x, b.z + 1));
-    }
-  }
-  for (const [name, b] of Object.entries({ Я: WORLD.job, Ф: WORLD.truck })) {
-    const [x, y] = pos(b.x, b.z);
-    ctx.fillStyle = "#cfba79";
-    ctx.fillRect(x - 3, y - 3, 6, 6);
-    ctx.fillStyle = "#e5dfba";
-    ctx.font = big ? "12px Arial" : "8px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText(name, x, y - 5);
-  }
-  if (state) {
-    for (const n of state.npcs.filter((n) => n.type === "police" && !n.dead)) {
-      const [x, y] = pos(n.x, n.z);
-      ctx.fillStyle = "#90b5d0";
-      ctx.beginPath();
-      ctx.arc(x, y, big ? 4 : 2, 0, 7);
-      ctx.fill();
-    }
-    for (const p of state.players) {
-      const [x, y] = pos(p.x, p.z);
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(-p.yaw);
-      ctx.fillStyle = p.id === "self" ? "#d5ef6a" : "#ebe6cd";
-      ctx.beginPath();
-      ctx.moveTo(0, 5);
-      ctx.lineTo(-4, -4);
-      ctx.lineTo(4, -4);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-      if (big) {
-        ctx.font = "11px Arial";
-        ctx.textAlign = "center";
-        ctx.fillText(p.name, x, y + 19);
-      }
-    }
-  }
-  ctx.strokeStyle = "#91a27217";
-  ctx.lineWidth = 1;
-  for (let i = 0; i < w; i += w / 10) {
-    ctx.beginPath();
-    ctx.moveTo(i, 0);
-    ctx.lineTo(i, h);
-    ctx.stroke();
-  }
 }
-function openMap() {
-  openModal(
-    "Старый квартал",
-    "map",
-    '<canvas id="bigMap" width="720" height="490"></canvas><div class="map-legend"><span>▲ Вы / напарник</span><span>Я · Ящики</span><span>Ф · Фургон</span><span>Синий · Полиция</span></div><p class="alpha-note">Дом — слева внизу. Банк — вверху. Арсенал — справа от дома. Склад — к западу от банка.</p>',
-  );
-  drawMap($("#bigMap"), true);
-}
-$("#mapBtn").onclick = openMap;
-function resizeViewport() {
-  const w = innerWidth,
-    h = innerHeight;
-  const scale = quality === "clear" ? 1 : quality === "balanced" ? 0.85 : 0.68;
-  const cap = touchDevice ? 620 : 850;
-  const factor = Math.min(scale, cap / h);
-  renderer.setSize(
-    Math.max(1, Math.round(w * factor)),
-    Math.max(1, Math.round(h * factor)),
-    false,
-  );
-  camera.aspect = w / h;
-  camera.fov = w > h ? 74 : 82;
-  camera.updateProjectionMatrix();
-  firstPerson.resize(w, h);
-  document.body.classList.toggle("portrait-phone", touchDevice && h > w);
-  document.body.classList.toggle("retro", quality === "retro");
-  document.body.classList.toggle("touch-device", touchDevice);
-}
-async function requestGameScreen(manual = false) {
-  if (manual && document.fullscreenElement) {
-    await document.exitFullscreen?.().catch(() => {});
-    return;
-  }
-  if (!touchDevice && !manual) return;
+async function health(base) {
+  let r;
   try {
-    if (
-      !document.fullscreenElement &&
-      document.documentElement.requestFullscreen
-    )
-      await document.documentElement.requestFullscreen();
+    r = await fetch(base + "/api/health", {
+      cache: "no-store",
+      signal: AbortSignal.timeout(6500),
+    });
+  } catch {
+    throw Error(
+      "Сервер не отвечает: нет сети, неверный адрес или процесс выключен.",
+    );
+  }
+  if (!r.ok) throw Error("Сервер вернул HTTP " + r.status);
+  let h;
+  try {
+    h = await r.json();
+  } catch {
+    throw Error("По этому адресу не игровой сервер (нет JSON /api/health).");
+  }
+  if (h.capacity !== 2 || !h.ok) throw Error("Неизвестный игровой сервер.");
+  return h;
+}
+async function probeSocket(base) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(base.replace(/^http/, "ws") + "/online");
+    const t = setTimeout(() => {
+      ws.close();
+      reject(Error("HTTP работает, но WebSocket заблокирован."));
+    }, 6500);
+    ws.onopen = () => {
+      clearTimeout(t);
+      ws.close();
+      resolve();
+    };
+    ws.onerror = () => {
+      clearTimeout(t);
+      reject(Error("Не открывается WebSocket /online."));
+    };
+  });
+}
+async function checkServer() {
+  try {
+    const h = await health(serverURL());
+    $("#serverStatus").textContent =
+      h.version === "0.3.0"
+        ? `● КАНАЛ ОТКРЫТ · В ЛЕСУ ${h.players}/2`
+        : `СЕРВЕР ${h.version} · ТРЕБУЕТСЯ SURVIVAL 0.3`;
+  } catch {
+    $("#serverStatus").textContent =
+      "○ СЕРВЕР НЕДОСТУПЕН · ПРОВЕРЬТЕ НАСТРОЙКИ";
+  }
+}
+function startAudio() {
+  if (!audio) {
+    audio = new Audio(world.assets.ambience);
+    audio.loop = true;
+  }
+  audio.volume = sound ? 0.22 : 0;
+  audio.play().catch(() => {});
+  try {
+    ctx ??= new AudioContext();
+    ctx.resume().catch(() => {});
   } catch {}
+}
+function fx(gun = false) {
+  if (!sound || !ctx) return;
+  const dur = gun ? 0.15 : 0.06,
+    buffer = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate),
+    data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++)
+    data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+  const src = ctx.createBufferSource(),
+    gain = ctx.createGain(),
+    filter = ctx.createBiquadFilter();
+  src.buffer = buffer;
+  filter.type = "lowpass";
+  filter.frequency.value = gun ? 1800 : 450;
+  gain.gain.value = gun ? 0.17 : 0.08;
+  src.connect(filter).connect(gain).connect(ctx.destination);
+  src.start();
+}
+$("#play").onclick = async () => {
+  if (!ready) return;
+  $("#play").disabled = true;
+  $("#play").textContent = "УСТАНАВЛИВАЕМ СВЯЗЬ…";
+  startAudio();
   try {
-    await screen.orientation?.lock?.("landscape");
-  } catch {} // Safari requires rotating the device manually.
-}
-function openDisplaySettings() {
-  openModal(
-    "Экран и управление",
-    "display",
-    `<div class="modal-copy"><p><b>Вид от первого лица.</b> Грубая ретро-картинка без тяжёлых эффектов. На телефоне удобнее играть горизонтально: левый палец — движение, правый — взгляд и огонь.</p></div><label class="field">ГРАФИКА<select id="qualityInput"><option value="retro">Грубая / ретро · меньше нагрузка</option><option value="balanced">Сбалансированная</option><option value="clear">Чёткая · выше нагрузка</option></select></label><label class="field">ЧУВСТВИТЕЛЬНОСТЬ ВЗГЛЯДА · <b id="sensitivityValue"></b><input id="sensitivityInput" type="range" min="0.35" max="2" step="0.05"></label><div class="modal-actions"><button id="screenExpand" class="primary">Полный экран ⛶</button><button id="screenDone" class="secondary">Готово</button></div><p class="alpha-note">Android APK автоматически использует горизонтальный полноэкранный формат. На iPhone поверните телефон и отключите блокировку ориентации; Safari не всегда разрешает принудительный поворот. Свайп по кнопке огня меняет направление взгляда, не прерывая стрельбу. Кнопка бега переключается одним нажатием.</p>`,
-  );
-  $("#qualityInput").value = quality;
-  $("#sensitivityInput").value = sensitivity;
-  $("#sensitivityValue").textContent = sensitivity.toFixed(2) + "×";
-  $("#qualityInput").onchange = (e) => {
-    quality = e.target.value;
-    store.set("di-quality", quality);
-    resizeViewport();
-  };
-  $("#sensitivityInput").oninput = (e) => {
-    sensitivity = Number(e.target.value);
-    store.set("di-sensitivity", String(sensitivity));
-    $("#sensitivityValue").textContent = sensitivity.toFixed(2) + "×";
-  };
-  $("#screenExpand").onclick = () => requestGameScreen(true);
-  $("#screenDone").onclick = closeModal;
-}
-$("#displayBtn").onclick = openDisplaySettings;
-$("#fullscreenBtn").onclick = () => requestGameScreen(true);
-function releaseControls() {
-  keys = {};
-  joy = { x: 0, y: 0 };
-  attackHeld = false;
-  runTouch = false;
-  $("#runBtn").classList.remove("active");
-  lookPointer = null;
-  joyPointer = null;
-  $("#stick").style.transform = "";
-  if (holdingLoot) {
-    send({ type: "lootStop" });
-    holdingLoot = false;
+    const base = serverURL(),
+      h = await health(base);
+    if (h.version !== "0.3.0")
+      throw Error(
+        "На сервере ещё старая игра " +
+          h.version +
+          ". Нужна новая Survival 0.3.",
+      );
+    await probeSocket(base);
+    const key = "nf-token-" + base + "-" + role;
+    let token = store.get(key);
+    if (!token) {
+      token = crypto.randomUUID();
+      store.set(key, token);
+    }
+    connection?.stop();
+    connection = new RoomConnection({
+      url: base.replace(/^http/, "ws") + "/online",
+      credentials: () => ({
+        token,
+        role,
+        code: store.get("di-room"),
+        version: 3,
+      }),
+      connectTimeout: 8000,
+      onStatus: (s) => {
+        connected = s.phase === "connected";
+        $("#connection").hidden = connected || !playing;
+        if (!connected) resetInput();
+        if (!playing && s.phase !== "idle")
+          $("#serverStatus").textContent =
+            s.phase === "waiting"
+              ? "НЕТ WEBSOCKET-СВЯЗИ · ПОВТОРЯЕМ ВХОД"
+              : "ПОДКЛЮЧЕНИЕ К ОБЩЕМУ МИРУ…";
+      },
+      onTerminal: (text) => {
+        leave(false);
+        notify(text);
+      },
+      onMessage: message,
+    });
+    connection.start();
+    voice.configure(base);
+  } catch (e) {
+    notify(e.message + " Откройте ⚙ → «Проверить сервер».");
+    $("#play").disabled = false;
+    $("#play").innerHTML = "НАЧАТЬ ВЫЛАЗКУ <span>↗</span>";
   }
-  send({
-    type: "input",
-    x: 0,
-    z: 0,
-    run: false,
-    aim: Math.atan2(-Math.sin(cameraYaw), -Math.cos(cameraYaw)),
-    pitch: cameraPitch,
-  });
-}
-window.addEventListener("blur", releaseControls);
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) releaseControls();
-  else connection?.wake();
-});
-window.addEventListener("online", () => connection?.wake());
-window.addEventListener("pageshow", () => connection?.wake());
-window.addEventListener("keydown", (e) => {
-  if (e.target instanceof HTMLInputElement) return;
-  const k = e.code;
-  if (
-    ["KeyW", "KeyA", "KeyS", "KeyD", "Space", "ArrowUp", "ArrowDown"].includes(
-      k,
+};
+function message(m) {
+  if (m.type === "state") {
+    state = m;
+    const me = m.players.find((p) => p.id === "self");
+    self = { ...m.self, ...me };
+    if (!self.inventory) return;
+    if (!playing) {
+      playing = true;
+      world.playing = true;
+      $("#menu").hidden = true;
+      $("#hud").hidden = false;
+      world.yaw = Number.isFinite(self.yaw) ? self.yaw - Math.PI : Math.PI;
+      pred = { x: self.x, z: self.z };
+      world.pos = { ...pred };
+      $("#play").disabled = false;
+      $("#play").innerHTML = "НАЧАТЬ ВЫЛАЗКУ <span>↗</span>";
+    }
+    if (!pred || dist(pred, self) > 5) pred = { x: self.x, z: self.z };
+    else {
+      pred.x += (self.x - pred.x) * 0.23;
+      pred.z += (self.z - pred.z) * 0.23;
+    }
+    world.sync(m);
+    updateHUD();
+    if (
+      $("#dialog").open &&
+      $("#dialogTitle").textContent === "Полевое снаряжение" &&
+      lastBag !== JSON.stringify([self.inventory, state.stash])
     )
-  )
-    e.preventDefault();
-  if (k === "Escape") {
-    if (modalKind) closeModal();
-    else pause();
+      showBag();
+  } else if (m.type === "notice") notify(m.text);
+  else if (m.type === "peerJoined") {
+    notify("Напарник вышел на связь.");
+    if (role === "deni") voice.offer();
+  } else if (m.type === "peerLeft") {
+    voice.resetPeer();
+    notify(
+      m.temporary
+        ? "У напарника пропала связь. Ждём возвращения."
+        : "Напарник покинул лес.",
+    );
+  } else if (m.type === "signal") voice.receive(m.data);
+  else if (m.type === "welcome" && m.slot === 0) voice.offer();
+}
+function leave(explicit = true) {
+  connection?.stop(explicit);
+  voice.close();
+  playing = false;
+  connected = false;
+  world.playing = false;
+  self = null;
+  pred = null;
+  state = null;
+  resetInput();
+  closeDialog();
+  $("#hud").hidden = true;
+  $("#menu").hidden = false;
+  $("#play").disabled = false;
+  $("#play").innerHTML = "НАЧАТЬ ВЫЛАЗКУ <span>↗</span>";
+  checkServer();
+}
+function updateHUD() {
+  for (const k of ["hp", "hunger", "thirst", "warmth"]) {
+    $("#" + k).textContent = Math.ceil(self[k]);
+    $("#" + k).style.color = self[k] < 25 ? "#e18d6b" : "";
+  }
+  $("#hpBar").style.width = self.hp + "%";
+  $("#staminaBar").style.width = self.stamina + "%";
+  $("#damage").style.opacity = Math.max(0, (45 - self.hp) / 65);
+  $("#frost").style.opacity = Math.max(0, (35 - self.warmth) / 45);
+  $("#weather").textContent =
+    state.temperature + "°C" + (state.storm ? " / ШКВАЛ" : "");
+  $("#time").textContent =
+    String(Math.floor(state.hour)).padStart(2, "0") +
+    ":" +
+    String(Math.floor((state.hour % 1) * 60)).padStart(2, "0");
+  $("#online").textContent =
+    state.players.filter((p) => p.connected).length + " / 02";
+  const w = ITEMS[self.selected];
+  $("#weaponName").textContent = w.name.toUpperCase();
+  $("#ammo").innerHTML = self.reload
+    ? "ЗАРЯДКА"
+    : w.mag
+      ? `${self.mag[self.selected]} <span>/ ${self.inventory.ammo || 0}</span>`
+      : "— <span>/ БЛИЖНИЙ БОЙ</span>";
+  const bar = ["axe", "spear", "pistol", "shotgun"];
+  $("#hotbar").innerHTML = bar
+    .map(
+      (id, i) =>
+        `<button data-slot="${id}" class="${self.selected === id ? "selected" : ""}" ${self.inventory[id] ? "" : "disabled"}><small>${i + 1}</small>${["ТОПОР", "КОПЬЁ", "ПМ", "ДРОБЬ"][i]}</button>`,
+    )
+    .join("");
+  $$("[data-slot]").forEach(
+    (b) => (b.onclick = () => send({ type: "select", item: b.dataset.slot })),
+  );
+  const parts = NODES.filter(
+    (n) => n.type === "part" && state.depleted[n.id] > state.time,
+  ).length;
+  $("#objective").textContent = state.radio.active
+    ? "Сигнал отправлен. Продолжайте выживать."
+    : !state.fires.some((f) => f.fuel > 0)
+      ? "Согрейтесь: добавьте дрова в костёр"
+      : parts < 3
+        ? `Найдите радиодетали: ${parts} / 3`
+        : `Почините вышку: ${state.radio.part}/3 · металл ${state.radio.scrap}/4 · топливо ${state.radio.fuel}/1`;
+  target = nearbyTarget(self, state);
+  $("#target").hidden = !target;
+  if (target) {
+    const names = {
+      wood: "Заготовить сухую древесину",
+      stone: "Собрать камень",
+      berry: "Собрать съедобные ягоды",
+      water: "Набрать речную воду",
+      crate: "Обыскать ящик",
+      supply: "Забрать припасы",
+      part: "Забрать радиодеталь",
+      fire:
+        target.fuel > 0
+          ? "Добавить дрова / согреться"
+          : "Разжечь костёр · древесина ×1",
+      drop: "Подобрать рюкзак",
+      stash: "Открыть общий ящик",
+      radio: "Внести детали / починить связь",
+      carcass: "Разделать тушу",
+    };
+    $("#targetText").textContent = self.loot
+      ? "Собираем… не двигайтесь"
+      : names[target.type] || "Осмотреть";
+  }
+  $("#gatherFill").style.width =
+    (self.loot ? (self.loot.elapsed / self.loot.duration) * 100 : 0) + "%";
+}
+function interact() {
+  if (!playing || $("#dialog").open || !connected || !target) return;
+  if (target.type === "stash") openPanel("stash");
+  else if (target.type === "fire") send({ type: "fire", id: target.id });
+  else if (target.type === "radio") send({ type: "radio" });
+  else send({ type: "gatherStart", id: target.id });
+}
+function shoot() {
+  if (!self || !connected || $("#dialog").open) return;
+  const w = ITEMS[self.selected],
+    now = performance.now() / 1000;
+  if (now - shotAt < w.cooldown || self.reload) return;
+  if (w.mag && !self.mag[self.selected]) {
+    send({ type: "reload" });
     return;
   }
-  if (!playing || modalKind) return;
-  keys[k] = true;
-  if (e.repeat) return;
-  if (k === "KeyE") interact();
-  if (k === "KeyR") send({ type: "reload" });
-  if (k === "KeyM") openMap();
-  if (k.startsWith("Digit")) {
-    const idx = Number(k.slice(5)) - 1;
-    const items = [
-      "fist",
-      ...self.inventory,
-      ...(self.bundles ? ["cash"] : []),
-    ];
-    if (items[idx]) send({ type: "select", item: items[idx] });
+  shotAt = now;
+  send({ type: "shoot" });
+  world.shot();
+  fx(!!w.mag);
+}
+$("#pause").onclick = () => openPanel("pause");
+$("#bagButton").onclick = () => openPanel("bag");
+$("#mapButton").onclick = () => openPanel("map");
+$("#interact").onclick = interact;
+$("#reload").onclick = () => send({ type: "reload" });
+$("#jump").onclick = () => send({ type: "jump" });
+$("#run").onclick = () => {
+  run = !run;
+  $("#run").classList.toggle("active", run);
+};
+$("#mic").onclick = async () => {
+  if (!voice.stream) await voice.enable();
+  else voice.mute();
+  $("#mic").textContent = voice.enabled ? "MIC ●" : "MIC";
+  voice.offer();
+};
+function movement() {
+  if (!playing || !connected || $("#dialog").open)
+    return { x: 0, z: 0, run: false };
+  let x = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + joystick.x,
+    z = (keys.has("KeyS") ? 1 : 0) - (keys.has("KeyW") ? 1 : 0) + joystick.z;
+  const len = Math.max(1, Math.hypot(x, z));
+  x /= len;
+  z /= len;
+  const a = world.yaw;
+  return {
+    x: x * Math.cos(a) + z * Math.sin(a),
+    z: -x * Math.sin(a) + z * Math.cos(a),
+    run: run || keys.has("ShiftLeft") || keys.has("ShiftRight"),
+  };
+}
+window.addEventListener("keydown", (e) => {
+  if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName)) return;
+  if (["Tab", "Space", "KeyM"].includes(e.code)) e.preventDefault();
+  if (e.code === "Escape") {
+    if (!$("#dialog").open && playing) openPanel("pause");
+    return;
   }
+  if (e.repeat || !playing) return;
+  if ($("#dialog").open) {
+    if (e.code === "Tab" || e.code === "KeyM") closeDialog();
+    return;
+  }
+  keys.add(e.code);
+  if (e.code === "KeyE") interact();
+  if (e.code === "KeyR") send({ type: "reload" });
+  if (e.code === "Space") send({ type: "jump" });
+  if (e.code === "Tab") openPanel("bag");
+  if (e.code === "KeyM") openPanel("map");
+  if (/^Digit[1-4]$/.test(e.code))
+    send({
+      type: "select",
+      item: ["axe", "spear", "pistol", "shotgun"][+e.code.slice(-1) - 1],
+    });
 });
-window.addEventListener("keyup", (e) => {
-  keys[e.code] = false;
-  if (e.code === "KeyE") interact(false);
-});
-canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+window.addEventListener("keyup", (e) => keys.delete(e.code));
+function look(dx, dy) {
+  if (!playing || $("#dialog").open) return;
+  world.yaw -= dx * 0.0025 * sensitivity;
+  world.pitch = T.MathUtils.clamp(
+    world.pitch - dy * 0.0025 * sensitivity,
+    -1.3,
+    1.3,
+  );
+}
+let lookPointer = null,
+  lastX = 0,
+  lastY = 0;
+const canvas = $("#game");
 canvas.addEventListener("pointerdown", (e) => {
-  if (!playing || modalKind) return;
-  if (e.pointerType === "touch") {
-    if (e.clientX < innerWidth * 0.4) return;
+  if (!playing || $("#dialog").open) return;
+  if (e.pointerType === "mouse") {
+    canvas.requestPointerLock?.();
+    fireHeld = true;
+    shoot();
+  } else if (e.clientX > innerWidth * 0.38) {
     lookPointer = e.pointerId;
-    lookLast = { x: e.clientX, y: e.clientY };
-    canvas.setPointerCapture(e.pointerId);
-  } else if (e.button === 0) {
-    if (document.pointerLockElement === canvas) attackHeld = true;
-    else {
-      try {
-        canvas.requestPointerLock?.();
-      } catch {}
-    }
-  } else if (e.button === 2) {
-    lookPointer = e.pointerId;
-    lookLast = { x: e.clientX, y: e.clientY };
+    lastX = e.clientX;
+    lastY = e.clientY;
     canvas.setPointerCapture(e.pointerId);
   }
 });
-canvas.addEventListener("pointermove", (e) => {
-  if (e.pointerId !== lookPointer || !lookLast) return;
-  const dx = e.clientX - lookLast.x,
-    dy = e.clientY - lookLast.y;
-  adjustLook(dx, dy);
-  lookLast = { x: e.clientX, y: e.clientY };
-});
-canvas.addEventListener("pointerup", (e) => {
-  if (e.pointerId === lookPointer) {
-    lookPointer = null;
-    lookLast = null;
-  }
-  if (e.pointerType !== "touch") attackHeld = false;
-});
-canvas.addEventListener("pointercancel", releaseControls);
-function adjustLook(dx, dy) {
-  cameraYaw -= dx * 0.0038 * sensitivity;
-  cameraPitch = Math.max(
-    -1.25,
-    Math.min(1.25, cameraPitch - dy * 0.0038 * sensitivity),
-  );
-}
-document.addEventListener("mousemove", (e) => {
-  if (playing && !modalKind && document.pointerLockElement === canvas)
-    adjustLook(e.movementX, e.movementY);
-});
-document.addEventListener("pointerlockchange", () => {
-  if (document.pointerLockElement !== canvas) attackHeld = false;
-});
-const joystick = $("#joystick");
-function moveJoy(e) {
-  const r = joystick.getBoundingClientRect(),
-    max = r.width * 0.34,
-    x = e.clientX - r.left - r.width / 2,
-    y = e.clientY - r.top - r.height / 2,
-    len = Math.hypot(x, y),
-    factor = Math.min(1, max / Math.max(1, len));
-  joy = { x: (x * factor) / max, y: (y * factor) / max };
-  $("#stick").style.transform = `translate(${x * factor}px,${y * factor}px)`;
-}
-joystick.onpointerdown = (e) => {
-  joyPointer = e.pointerId;
-  joystick.setPointerCapture(e.pointerId);
-  moveJoy(e);
-};
-joystick.onpointermove = (e) => {
-  if (e.pointerId === joyPointer) moveJoy(e);
-};
-joystick.onpointerup = joystick.onpointercancel = () => {
-  joyPointer = null;
-  joy = { x: 0, y: 0 };
-  $("#stick").style.transform = "";
-};
-function bindHold(el, start, end) {
-  el.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    el.setPointerCapture(e.pointerId);
-    start();
-  });
-  el.addEventListener("pointerup", end);
-  el.addEventListener("pointercancel", end);
-  el.addEventListener("lostpointercapture", end);
-}
-let fireLook = null;
-bindHold(
-  $("#attackBtn"),
-  () => (attackHeld = true),
-  () => {
-    attackHeld = false;
-    fireLook = null;
-  },
-);
-$("#attackBtn").addEventListener("pointerdown", (e) => {
-  fireLook = { id: e.pointerId, x: e.clientX, y: e.clientY };
-});
-$("#attackBtn").addEventListener("pointermove", (e) => {
-  if (fireLook?.id === e.pointerId) {
-    adjustLook(e.clientX - fireLook.x, e.clientY - fireLook.y);
-    fireLook = { id: e.pointerId, x: e.clientX, y: e.clientY };
+window.addEventListener("pointermove", (e) => {
+  if (document.pointerLockElement === canvas && e.pointerType === "mouse")
+    look(e.movementX, e.movementY);
+  else if (e.pointerId === lookPointer) {
+    look(e.clientX - lastX, e.clientY - lastY);
+    lastX = e.clientX;
+    lastY = e.clientY;
   }
 });
-$("#runBtn").onclick = () => {
-  runTouch = !runTouch;
-  $("#runBtn").classList.toggle("active", runTouch);
-};
-$("#reloadBtn").onclick = () => send({ type: "reload" });
-bindHold(
-  $("#touchInteract"),
-  () => interact(),
-  () => interact(false),
-);
-bindHold(
-  $("#interaction"),
-  () => interact(),
-  () => interact(false),
-);
-let inputAccum = 0,
-  shotAccum = 0,
-  mapAccum = 0,
-  lastShotTime = -1,
-  lastHp = 100;
-const clock = new THREE.Clock();
-function frame() {
-  requestAnimationFrame(frame);
-  const dt = Math.min(clock.getDelta(), 0.05);
-  elapsed += dt;
-  if (playing && state && self) {
-    for (const [id, m] of actors) {
-      const p = m.userData.net;
-      m.visible = id !== "self" && p.connected !== false;
-      if (Math.hypot(m.position.x - p.x, m.position.z - p.z) > 5)
-        m.position.set(p.x, 0, p.z);
-      m.position.x = THREE.MathUtils.lerp(
-        m.position.x,
-        p.x,
-        1 - Math.exp(-dt * 18),
-      );
-      m.position.z = THREE.MathUtils.lerp(
-        m.position.z,
-        p.z,
-        1 - Math.exp(-dt * 18),
-      );
-      let diff = Math.atan2(
-        Math.sin(p.yaw - m.rotation.y),
-        Math.cos(p.yaw - m.rotation.y),
-      );
-      m.rotation.y += diff * Math.min(1, dt * 14);
-      animateCharacter(m, p, elapsed, dt);
-    }
-    for (const m of npcActors.values()) {
-      const n = m.userData.net;
-      m.visible = n.dead <= 0;
-      if (!m.visible) continue;
-      m.position.x = THREE.MathUtils.lerp(
-        m.position.x,
-        n.x,
-        Math.min(1, dt * 12),
-      );
-      m.position.z = THREE.MathUtils.lerp(
-        m.position.z,
-        n.z,
-        Math.min(1, dt * 12),
-      );
-      m.rotation.y +=
-        Math.atan2(
-          Math.sin(n.yaw - m.rotation.y),
-          Math.cos(n.yaw - m.rotation.y),
-        ) * Math.min(1, dt * 9);
-      animateCharacter(
-        m,
-        { moving: !["cashier", "seller"].includes(n.type), selected: "fist" },
-        elapsed,
-        dt,
-      );
-      if (n.type === "guard" && m.userData.held.children.length === 0) {
-        const baton = box(m.userData.held, 0.06, 0.6, 0.06, 0, 0, 0, "#2e382f");
-        baton.rotation.x = 0.3;
-      }
-    }
-    const actor = actors.get("self");
-    if (actor) {
-      const p = actor.userData.net;
-      const bob =
-        p.moving && connection?.joined
-          ? Math.sin(elapsed * (runTouch || keys.ShiftLeft ? 13 : 9)) * 0.015
-          : 0;
-      const eye = 1.62 - Math.min(1, self.sleep || 0) * 0.75;
-      camera.position.set(actor.position.x, eye + bob, actor.position.z);
-      camera.rotation.set(cameraPitch, cameraYaw, 0, "YXZ");
-      city.update(actor.position, state.door, dt, true);
-      firstPerson.update(
-        {
-          selected: self.selected,
-          carrying: p.carrying,
-          moving: p.moving && connection?.joined,
-          running: runTouch || keys.ShiftLeft,
-          reload: self.reload,
-          looting: !!self.loot,
-          sleep: self.sleep,
-          slot,
-        },
-        elapsed,
-      );
-    }
-    inputAccum += dt;
-    shotAccum += dt;
-    mapAccum += dt;
-    if (inputAccum > 0.05) {
-      inputAccum = 0;
-      let x = 0,
-        z = 0;
-      if (!modalKind) {
-        const localX = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + joy.x,
-          localZ = (keys.KeyS ? 1 : 0) - (keys.KeyW ? 1 : 0) + joy.y;
-        x = localX * Math.cos(cameraYaw) + localZ * Math.sin(cameraYaw);
-        z = -localX * Math.sin(cameraYaw) + localZ * Math.cos(cameraYaw);
-      }
-      send({
-        type: "input",
-        x,
-        z,
-        run: !!(keys.ShiftLeft || keys.ShiftRight || runTouch),
-        aim: Math.atan2(-Math.sin(cameraYaw), -Math.cos(cameraYaw)),
-        pitch: cameraPitch,
-      });
-    }
-    if (attackHeld && !modalKind && shotAccum > 0.12) {
-      send({ type: "shoot" });
-      shotAccum = 0;
-    }
-    const p = state.players.find((p) => p.id === "self");
-    if (p && lastShotTime === null) lastShotTime = p.shotAt;
-    if (p && p.shotAt >= 0 && p.shotAt !== lastShotTime) {
-      lastShotTime = p.shotAt;
-      firstPerson.attack(elapsed);
-      sound(ITEMS[self.selected]?.mag ? "shot" : "punch");
-    }
-    if (self.hp < lastHp - 1)
-      $("#vignette").style.boxShadow = "inset 0 0 90px #b24a3f66";
-    else $("#vignette").style.boxShadow = "none";
-    lastHp = self.hp;
-    interaction = interactionAt();
-    show("#interaction", !!interaction && !modalKind && !self.sleep);
-    show("#touchInteract", !!interaction && !modalKind && !self.sleep);
-    if (interaction) {
-      $("#interactTitle").textContent = interaction.title;
-      $("#interactSub").textContent = interaction.sub;
-    }
-    if (mapAccum > 0.15) {
-      mapAccum = 0;
-      drawMap($("#radar"));
-      if (modalKind === "map") drawMap($("#bigMap"), true);
-      $("#saveState").textContent = connection?.joined
-        ? "АВТОСОХРАНЕНИЕ"
-        : "НЕТ СВЯЗИ";
-    }
-    if (performance.now() - lastStateAt > 6000)
-      $("#sessionPlayers").textContent = "СОЕДИНЕНИЕ ЗАДЕРЖИВАЕТСЯ";
-  } else if (!playing) {
-    camera.position.set(
-      47 + Math.sin(elapsed * 0.045) * 3,
-      34,
-      53 + Math.cos(elapsed * 0.045) * 2,
-    );
-    camera.lookAt(-3, 0, -6);
-    for (const m of menuDuo)
-      animateCharacter(m, { selected: "fist" }, elapsed, dt);
-    city.update(null, true, dt);
-  }
-  renderer.render(scene, camera);
-  if (playing && self) firstPerson.render();
-}
-// Recover the renderer on mobile context restoration, rather than leaving a black screen.
-canvas.addEventListener("webglcontextlost", (e) => {
+window.addEventListener("pointerup", (e) => {
+  if (e.pointerId === lookPointer) lookPointer = null;
+  if (e.pointerType === "mouse") fireHeld = false;
+});
+window.addEventListener("pointercancel", () => {
+  lookPointer = null;
+  fireHeld = false;
+});
+$("#fire").addEventListener("pointerdown", (e) => {
   e.preventDefault();
-  releaseControls();
-  notify(
-    "Графический контекст потерян. Вернитесь в приложение или перезагрузите страницу.",
-    true,
-  );
+  fireHeld = true;
+  lastX = e.clientX;
+  lastY = e.clientY;
+  $("#fire").setPointerCapture(e.pointerId);
+  shoot();
 });
-window.addEventListener("resize", resizeViewport);
-window.visualViewport?.addEventListener("resize", resizeViewport);
-window.addEventListener("beforeunload", () => {
-  voice.close();
-  connection?.stop();
+$("#fire").addEventListener("pointermove", (e) => {
+  if (fireHeld) {
+    look(e.clientX - lastX, e.clientY - lastY);
+    lastX = e.clientX;
+    lastY = e.clientY;
+  }
 });
-resizeViewport();
-makeThumbnails();
-show("#loading", false);
-show("#menu");
-frame();
-if ("serviceWorker" in navigator && import.meta.env.PROD)
-  navigator.serviceWorker
-    .register(import.meta.env.BASE_URL + "sw.js")
-    .catch(() => {});
+for (const ev of ["pointerup", "pointercancel"])
+  $("#fire").addEventListener(ev, () => (fireHeld = false));
+let stickID = null,
+  stickX = 0,
+  stickY = 0;
+$("#stick").addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  stickID = e.pointerId;
+  const r = $("#stick").getBoundingClientRect();
+  stickX = r.left + r.width / 2;
+  stickY = r.top + r.height / 2;
+  $("#stick").setPointerCapture(e.pointerId);
+  updateStick(e);
+});
+function updateStick(e) {
+  if (stickID !== e.pointerId) return;
+  const dx = e.clientX - stickX,
+    dy = e.clientY - stickY,
+    len = Math.max(1, Math.hypot(dx, dy) / 35);
+  joystick = { x: dx / len / 35, z: dy / len / 35 };
+  $("#stickKnob").style.transform = `translate(${dx / len}px,${dy / len}px)`;
+}
+$("#stick").addEventListener("pointermove", updateStick);
+for (const ev of ["pointerup", "pointercancel"])
+  $("#stick").addEventListener(ev, () => {
+    stickID = null;
+    joystick = { x: 0, z: 0 };
+    $("#stickKnob").style.transform = "";
+  });
+window.addEventListener("blur", resetInput);
+document.addEventListener("visibilitychange", () => {
+  resetInput();
+  if (!document.hidden) connection?.wake();
+});
+window.addEventListener("online", () => {
+  connection?.wake();
+  checkServer();
+});
+window.addEventListener("pageshow", () => connection?.wake());
+window.addEventListener("resize", () => world?.resize());
+setInterval(() => {
+  if (!playing) return;
+  const m = movement();
+  send({ type: "input", ...m, aim: world.yaw + Math.PI, pitch: world.pitch });
+}, 50);
+setInterval(() => {
+  if (!playing) checkServer();
+}, 20000);
+async function init() {
+  try {
+    const renderer = new T.WebGLRenderer({
+      canvas,
+      antialias: false,
+      powerPreference: "high-performance",
+    });
+    renderer.outputColorSpace = T.SRGBColorSpace;
+    renderer.toneMapping = T.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = T.PCFSoftShadowMap;
+    const assets = new Assets(renderer);
+    await assets.load((p, done, total) => {
+      $("#loadBar").style.width = p * 100 + "%";
+      $("#loadText").textContent =
+        `Подготовка экспедиции · ${(done / 1e6).toFixed(1)} / ${(total / 1e6).toFixed(1)} МБ`;
+    });
+    world = new SurvivalWorld(canvas, assets);
+    world.quality = store.get("nf-quality", assets.mobile ? "low" : "high");
+    world.resize();
+    world.sync({
+      fires: [{ id: "base-fire", x: 0, z: 49, fuel: 150 }],
+      players: [],
+      npcs: [],
+      drops: [],
+      depleted: {},
+      time: 0,
+      hour: 6.5,
+      radio: { active: false },
+    });
+    ready = true;
+    $("#loading").hidden = true;
+    $("#menu").hidden = false;
+    checkServer();
+    let prev = performance.now();
+    function frame(t) {
+      requestAnimationFrame(frame);
+      if (document.hidden) {
+        prev = t;
+        return;
+      }
+      const dt = Math.min(0.06, (t - prev) / 1000);
+      prev = t;
+      if (playing && self) {
+        const m = movement(),
+          speed = m.run && self.stamina > 2 ? 7 : 3.9;
+        const dx = m.x * speed * dt,
+          dz = m.z * speed * dt;
+        if (!blocked(pred.x + dx, pred.z)) pred.x += dx;
+        if (!blocked(pred.x, pred.z + dz)) pred.z += dz;
+        if (fireHeld) shoot();
+        const degree = (((world.yaw + Math.PI) * 180) / Math.PI + 3600) % 360;
+        $("#compass").innerHTML =
+          `С <b>${Math.round(degree).toString().padStart(3, "0")}</b> Ю`;
+        const goal = waypoint || POIS.find((p) => p.id === "radio");
+        $("#waypoint").textContent =
+          `${goal.name} · ${Math.round(dist(self, goal))} м`;
+        world.render(dt, {
+          ...self,
+          ...pred,
+          moving: Math.hypot(m.x, m.z) > 0.1,
+          running: m.run,
+        });
+      } else world.render(dt, null);
+    }
+    requestAnimationFrame(frame);
+    if ("serviceWorker" in navigator && !native && import.meta.env.PROD)
+      navigator.serviceWorker.register("./sw.js").catch(() => {});
+    // Read-only diagnostics for automated regressions, without a debug/admin backdoor.
+    window.__survival = () => ({
+      ready,
+      playing,
+      connected,
+      self: self
+        ? {
+            x: self.x,
+            z: self.z,
+            hp: self.hp,
+            inventory: { ...self.inventory },
+            selected: self.selected,
+          }
+        : null,
+      players: state?.players.map((p) => ({
+        slot: p.slot,
+        x: p.x,
+        z: p.z,
+        connected: p.connected,
+      })),
+      yaw: world.yaw,
+      pitch: world.pitch,
+      target: target?.type,
+      triangles: renderer.info.render.triangles,
+    });
+  } catch (e) {
+    console.error(e);
+    $("#loadText").textContent = "Не удалось подготовить мир: " + e.message;
+    $("#loading small").textContent =
+      "Обновите Android System WebView / браузер. Нужен WebGL 2. Проверьте загрузку файлов и попробуйте ещё раз.";
+  }
+}
+init();

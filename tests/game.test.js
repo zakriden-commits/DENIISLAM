@@ -1,291 +1,276 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Game } from "../server/game.js";
-import { WORLD, ITEMS, blocked } from "../src/shared.js";
+import {
+  WORLD,
+  POIS,
+  NODES,
+  TREES,
+  ITEMS,
+  dist,
+  blocked,
+  heightAt,
+  lineClear,
+} from "../src/shared.js";
 function setup() {
-  const g = new Game();
-  const p = g.add("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "deni");
-  p.sleep = 0;
+  const g = new Game(),
+    p = g.add("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "deni");
   g.npcs = [];
   return { g, p };
 }
 function step(g, t) {
   for (let i = 0; i < Math.ceil(t / 0.05); i++) g.step(0.05);
 }
-test("one shared room, unique roles, capacity two", () => {
-  const { g, p } = setup();
-  assert.throws(() => g.add("b", "deni"), /персонаж/);
-  const p2 = g.add("b", "islam");
-  assert.equal(p.slot, 0);
-  assert.equal(p2.slot, 1);
-  assert.throws(() => g.add("c", "deni"), /заполнен/);
-  assert.throws(() => g.add(p.id, "deni"), /профиль/);
+function gather(g, p, n) {
+  p.x = n.x;
+  p.z = n.z;
+  g.action(p, { type: "gatherStart", id: n.id });
+  step(g, 4);
+}
+test("world is new 1 km² survival terrain, with 7 places and seeded forest", () => {
+  assert.equal(WORLD.size, 1024);
+  assert.equal(POIS.length, 7);
+  assert.ok(TREES.length > 700);
+  assert.ok(Number.isFinite(heightAt(300, -400)));
+  assert.ok(blocked(510, 0));
+  assert.ok(!blocked(...Object.values(WORLD.spawns[0])));
 });
-test("purchase requires shop proximity and sufficient funds", () => {
+test("one room / two distinct survivors, private inventory and no tokens leaked", () => {
   const { g, p } = setup();
-  p.balance = 2000;
-  g.action(p, { type: "buy", item: "pistol" });
-  assert.equal(p.inventory.length, 0);
-  Object.assign(p, { x: 24, z: 15 });
-  g.action(p, { type: "buy", item: "pistol" });
-  assert.deepEqual(p.inventory, ["pistol"]);
-  assert.equal(p.balance, 1350);
-  g.action(p, { type: "buy", item: "pistol" });
-  assert.equal(p.balance, 1350);
-  g.action(p, { type: "buy", item: "smg" });
-  assert.equal(p.inventory.length, 1);
+  assert.throws(() => g.add("b", "deni"));
+  const b = g.add("b", "islam");
+  assert.equal(b.slot, 1);
+  assert.throws(() => g.add("c", "islam"));
+  const s = g.snapshot(p.id);
+  assert.equal(s.players[0].id, "self");
+  assert.ok(!JSON.stringify(s).includes(p.id));
+  assert.equal(s.self.inventory.axe, 1);
+  assert.equal(s.self.cash, undefined);
 });
-test("ammo is separate; reload consumes reserve, firing consumes magazine", () => {
-  const { g, p } = setup();
-  Object.assign(p, { x: 24, z: 15, balance: 1000 });
-  g.action(p, { type: "buy", item: "pistol" });
-  g.action(p, { type: "select", item: "pistol" });
-  g.action(p, { type: "reload" });
-  assert.equal(p.reload, undefined);
-  g.action(p, { type: "buy", item: "ammo" });
-  assert.equal(p.ammo, 24);
-  g.action(p, { type: "reload" });
-  step(g, 1.7);
-  assert.equal(p.mag.pistol, 12);
-  assert.equal(p.ammo, 12);
-  g.action(p, { type: "shoot" });
-  assert.equal(p.mag.pistol, 11);
+test("old tycoon save is not interpreted as survival progression", () => {
+  const g = new Game({
+      profiles: { a: { cash: 999999, inventory: { shotgun: 1 } } },
+    }),
+    p = g.add("a", "deni");
+  assert.equal(p.inventory.shotgun, undefined);
+  assert.equal(p.inventory.axe, 1);
 });
-test("player damage is never a valid target (no friendly fire)", () => {
-  const { g, p } = setup();
-  const buddy = g.add("friend", "islam");
-  buddy.sleep = 0;
-  Object.assign(p, {
-    x: 0,
-    z: 0,
-    selected: "pistol",
-    inventory: ["pistol"],
-    mag: { pistol: 12, smg: 0 },
-  });
-  Object.assign(buddy, { x: 0, z: 2 });
-  p.input.aim = 0;
-  for (let i = 0; i < 6; i++) {
-    g.action(p, { type: "shoot" });
-    step(g, 0.4);
-  }
-  assert.equal(buddy.hp, 100);
-});
-test("sight is directional and walls block it", () => {
-  const { g } = setup();
-  assert.equal(g.canSee({ x: 0, z: 0, yaw: 0 }, { x: 0, z: 4 }), true);
-  assert.equal(g.canSee({ x: 0, z: 0, yaw: 0 }, { x: 0, z: -4 }), false);
-  g.door = false;
-  assert.equal(g.canSee({ x: -22, z: 8, yaw: 0 }, { x: -22, z: 13 }), false);
-  g.door = true;
-  assert.equal(g.canSee({ x: -22, z: 8, yaw: 0 }, { x: -22, z: 13 }), true);
-});
-test("hand loot needs 15 seconds, creates five bundles and deposits random value", () => {
-  const { g, p } = setup();
-  Object.assign(p, WORLD.loot);
-  g.action(p, { type: "lootStart" });
-  step(g, 14);
-  assert.equal(p.bundles, 0);
-  step(g, 1.1);
-  assert.equal(p.bundles, 5);
-  assert.ok(p.handCash >= 2500 && p.handCash <= 9999);
-  const value = p.handCash,
-    before = p.balance;
-  g.action(p, { type: "select", item: "cash" });
-  g.action(p, { type: "deposit" });
-  assert.equal(p.balance, before + value);
-  assert.equal(p.bundles, 0);
-});
-test("release or movement cancels looting", () => {
-  const { g, p } = setup();
-  Object.assign(p, WORLD.loot);
-  g.action(p, { type: "lootStart" });
-  step(g, 5);
-  g.action(p, { type: "lootStop" });
-  step(g, 16);
-  assert.equal(p.bundles, 0);
-  g.action(p, { type: "lootStart" });
-  g.action(p, { type: "input", x: 1, z: 0 });
-  step(g, 0.1);
+test("gather is server-timed, range checked and resources cannot duplicate", () => {
+  const { g, p } = setup(),
+    n = NODES.find((n) => n.type === "wood");
+  g.action(p, { type: "gatherStart", id: n.id });
+  assert.equal(p.loot, null);
+  p.x = n.x;
+  p.z = n.z;
+  g.action(p, { type: "gatherStart", id: n.id });
+  step(g, 1);
+  assert.equal(p.inventory.wood, 2);
+  step(g, 3);
+  assert.equal(p.inventory.wood, 4);
+  g.action(p, { type: "gatherStart", id: n.id });
   assert.equal(p.loot, null);
 });
-test("equipped bag takes 30 seconds; partial withdrawal is bounded", () => {
-  const { g, p } = setup();
-  Object.assign(p, { ...WORLD.loot, inventory: ["bag"], selected: "bag" });
-  g.action(p, { type: "lootStart" });
-  step(g, 29);
-  assert.equal(p.bagCash, 0);
-  step(g, 1.1);
-  assert.equal(p.bagCash, 50000);
-  g.action(p, { type: "deposit", amount: 1234 });
-  assert.equal(p.bagCash, 48766);
-  assert.equal(p.balance, 1434);
-  g.action(p, { type: "deposit", amount: 9999999 });
-  assert.equal(p.bagCash, 0);
-  assert.equal(p.balance, 50200);
-});
-test("personal lockers have 15 slots and preserve loaded gun / bag cash", () => {
-  const { g, p } = setup();
-  Object.assign(p, {
-    ...WORLD.lockers[0],
-    inventory: ["pistol", "bag"],
-    selected: "bag",
-    bagCash: 3400,
-  });
-  p.mag.pistol = 8;
-  g.action(p, { type: "locker", direction: "store", index: 1 });
-  assert.equal(p.bagCash, 0);
-  assert.equal(p.locker[0].cash, 3400);
-  g.action(p, { type: "locker", direction: "store", index: 0 });
-  assert.equal(p.locker[1].loaded, 8);
-  g.action(p, { type: "locker", direction: "take", index: 1 });
-  assert.equal(p.mag.pistol, 8);
-  g.action(p, { type: "locker", direction: "take", index: 0 });
-  assert.equal(p.bagCash, 3400);
-  p.locker = Array.from({ length: 15 }, () => ({ item: "medkit" }));
-  g.action(p, { type: "locker", direction: "store", index: 0 });
-  assert.equal(p.locker.length, 15);
-});
-test("other player cannot access your locker", () => {
-  const { g, p } = setup();
-  Object.assign(p, { ...WORLD.lockers[1], inventory: ["pistol"] });
-  g.action(p, { type: "locker", direction: "store", index: 0 });
-  assert.equal(p.locker.length, 0);
-});
-test("three crate deliveries award money once", () => {
-  const { g, p } = setup();
-  Object.assign(p, WORLD.job);
-  g.action(p, { type: "job" });
-  const reward = p.job.reward;
-  for (let i = 0; i < 3; i++) {
-    Object.assign(p, WORLD.job);
-    g.action(p, { type: "interactJob" });
-    assert.equal(p.job.stage, "carry");
-    Object.assign(p, WORLD.truck);
-    g.action(p, { type: "interactJob" });
-  }
-  assert.equal(p.balance, 200 + reward);
-  assert.equal(p.job, null);
-  g.action(p, { type: "interactJob" });
-  assert.equal(p.balance, 200 + reward);
-});
-test("death wipes carried items, not locker or balance", () => {
-  const { g, p } = setup();
-  Object.assign(p, {
-    hp: 0,
-    inventory: ["pistol", "bag"],
-    ammo: 99,
-    bagCash: 3000,
-    bundles: 5,
-    handCash: 5000,
-    balance: 999,
-    locker: [{ item: "medkit" }],
-  });
-  g.step(0.05);
-  assert.equal(p.hp, 100);
-  assert.deepEqual(p.inventory, []);
-  assert.equal(p.ammo, 0);
-  assert.equal(p.bagCash, 0);
-  assert.equal(p.balance, 999);
-  assert.equal(p.locker.length, 1);
-  assert.equal(p.sleep, 3);
-});
-test("saves restore profile, hand cash, bag and locker after restart", () => {
-  const { g, p } = setup();
-  Object.assign(p, {
-    inventory: ["bag"],
-    bagCash: 1234,
-    bundles: 5,
-    handCash: 5432,
-    balance: 912,
-    locker: [{ item: "pistol", loaded: 4, cash: 0 }],
-  });
-  const save = JSON.parse(JSON.stringify(g.save()));
-  const g2 = new Game(save),
-    restored = g2.add(p.id, "deni");
-  assert.equal(restored.balance, 912);
-  assert.equal(restored.handCash, 5432);
-  assert.equal(restored.bagCash, 1234);
-  assert.equal(restored.locker[0].loaded, 4);
-  assert.equal(restored.x, WORLD.spawns[0].x);
-});
-test("wanted stars decay only after hiding; closed home protects sight", () => {
-  const { g, p } = setup();
-  g.door = false;
-  g.crime(p, 2);
-  assert.equal(p.wanted, 2);
-  step(g, 17);
-  assert.equal(p.wanted, 2);
-  step(g, 2);
-  assert.equal(p.wanted, 1);
-  step(g, 19);
-  assert.equal(p.wanted, 0);
-});
-test("walls, world boundary and home door are solid", () => {
-  assert.equal(blocked(58, 0), true);
-  assert.equal(blocked(-31, 17), true);
-  assert.equal(blocked(-22, 10, false), true);
-  assert.equal(blocked(-22, 10, true), false);
-  assert.equal(blocked(0, -13), false);
-});
-test("invalid input cannot inject NaN into world", () => {
-  const { g, p } = setup();
-  g.action(p, { type: "input", x: "bogus", z: null, aim: "NaN" });
-  g.step(0.05);
-  assert.ok(Number.isFinite(p.x));
-  assert.ok(Number.isFinite(p.z));
-  assert.ok(Number.isFinite(p.input.aim));
-});
-
-test("waking up puts each player beside their bed", () => {
-  const { g, p } = setup();
-  p.sleep = 3;
-  step(g, 3.1);
-  assert.equal(p.sleep, 0);
-  assert.equal(p.x, WORLD.spawns[0].x + 2.5);
-  assert.equal(p.z, WORLD.spawns[0].z + 1);
-});
-
-test("missing mobile inputs stop movement within half a second", () => {
-  const { g, p } = setup();
-  Object.assign(p, { x: 0, z: 0 });
+test("moving cancels gathering and expired input stops movement", () => {
+  const { g, p } = setup(),
+    n = NODES[0];
+  p.x = n.x;
+  p.z = n.z;
+  g.action(p, { type: "gatherStart", id: n.id });
   g.action(p, { type: "input", x: 1, z: 0, aim: 0 });
-  step(g, 0.8);
-  const stopped = p.x;
+  step(g, 0.2);
+  assert.equal(p.loot, null);
   step(g, 1);
-  assert.equal(p.x, stopped);
-  assert.ok(p.x <= 2.1);
+  assert.equal(p.input.x, 0);
 });
-test("disconnected player is frozen while their session is reserved", () => {
+test("hunger/thirst/cold matter, campfire consumes actual wood and warms", () => {
+  const { g, p } = setup();
+  p.x = 50;
+  p.z = 100;
+  p.warmth = 10;
+  p.thirst = 3;
+  const hp = p.hp;
+  step(g, 3);
+  assert.ok(p.hp < hp);
+  const f = g.fires[0];
+  p.x = f.x;
+  p.z = f.z;
+  p.warmth = 30;
+  const wood = p.inventory.wood;
+  g.action(p, { type: "fire", id: f.id });
+  assert.equal(p.inventory.wood, wood - 1);
+  step(g, 2);
+  assert.ok(p.warmth > 30);
+  assert.ok(f.fuel < 150 && f.fuel > 140);
+});
+test("crafting validates materials and cooking requires fire", () => {
+  const { g, p } = setup();
+  g.action(p, { type: "craft", recipe: "spear" });
+  assert.equal(p.inventory.spear, undefined);
+  p.inventory.wood = 5;
+  p.inventory.stone = 3;
+  g.action(p, { type: "craft", recipe: "spear" });
+  assert.equal(p.inventory.spear, 1);
+  assert.equal(p.inventory.wood, 2);
+  p.inventory.raw = 1;
+  g.action(p, { type: "craft", recipe: "cooked" });
+  assert.equal(p.inventory.raw, 1);
+  p.x = g.fires[0].x;
+  p.z = g.fires[0].z;
+  g.action(p, { type: "fire", id: g.fires[0].id });
+  g.action(p, { type: "craft", recipe: "cooked" });
+  assert.equal(p.inventory.cooked, 1);
+});
+test("river water is not clean water until boiled", () => {
+  const { g, p } = setup();
+  p.z = 50;
+  p.x = WORLD.riverX(p.z);
+  g.action(p, { type: "gatherStart", id: "river" });
+  step(g, 2);
+  assert.equal(p.inventory.dirtywater, 2);
+  p.x = g.fires[0].x;
+  p.z = g.fires[0].z;
+  g.action(p, { type: "fire", id: g.fires[0].id });
+  g.action(p, { type: "craft", recipe: "water" });
+  assert.equal(p.inventory.dirtywater, 1);
+  assert.equal(p.inventory.water, 3);
+});
+test("consumables remove one item and heal only within limits", () => {
+  const { g, p } = setup();
+  p.hp = 50;
+  p.inventory.medkit = 1;
+  g.action(p, { type: "use", item: "medkit" });
+  assert.equal(p.hp, 100);
+  assert.equal(p.inventory.medkit, undefined);
+  g.action(p, { type: "use", item: "axe" });
+  assert.equal(p.inventory.axe, 1);
+});
+test("stash is shared and cannot be operated remotely", () => {
+  const { g, p } = setup(),
+    b = g.add("b", "islam");
+  g.action(p, { type: "stash", item: "wood", direction: "store", amount: 2 });
+  assert.equal(g.stash.wood, undefined);
+  p.x = WORLD.stash.x;
+  p.z = WORLD.stash.z;
+  g.action(p, { type: "stash", item: "wood", direction: "store", amount: 2 });
+  assert.equal(g.stash.wood, 2);
+  b.x = p.x;
+  b.z = p.z;
+  g.action(b, { type: "stash", item: "wood", direction: "take", amount: 99 });
+  assert.equal(b.inventory.wood, 4);
+  assert.equal(g.stash.wood, 0);
+});
+test("guns require ownership, real ammo, reload time and cooldown", () => {
+  const { g, p } = setup();
+  g.action(p, { type: "select", item: "shotgun" });
+  assert.equal(p.selected, "axe");
+  p.inventory.pistol = 1;
+  p.inventory.ammo = 10;
+  g.action(p, { type: "select", item: "pistol" });
+  g.action(p, { type: "reload" });
+  step(g, 2);
+  assert.equal(p.mag.pistol, 8);
+  assert.equal(p.inventory.ammo, 2);
+  g.action(p, { type: "shoot" });
+  g.action(p, { type: "shoot" });
+  assert.equal(p.mag.pistol, 7);
+});
+test("friendly fire is impossible; only NPCs can be targeted", () => {
+  const { g, p } = setup(),
+    b = g.add("b", "islam");
+  p.x = 0;
+  p.z = 48;
+  b.x = 0;
+  b.z = 49;
+  p.input.aim = 0;
+  g.action(p, { type: "shoot" });
+  assert.equal(b.hp, 100);
+});
+test("melee hits an actual nearby target and carcass rewards only once", () => {
+  const { g, p } = setup();
+  p.x = 0;
+  p.z = 50;
+  p.input.aim = 0;
+  const n = { id: "wolf", type: "wolf", x: 0, z: 52, hp: 20, yaw: 0 };
+  g.npcs = [n];
+  g.action(p, { type: "shoot" });
+  assert.equal(n.hp, 0);
+  g.action(p, { type: "gatherStart", id: n.id });
+  step(g, 2);
+  assert.equal(p.inventory.raw, 2);
+  g.action(p, { type: "gatherStart", id: n.id });
+  step(g, 2);
+  assert.equal(p.inventory.raw, 2);
+});
+test("death drops a recoverable backpack; no free restored weapon", () => {
+  const { g, p } = setup();
+  p.x = 0;
+  p.z = 50;
+  p.hp = 0;
+  step(g, 0.05);
+  assert.equal(g.drops.length, 1);
+  assert.equal(p.hp, 100);
+  assert.equal(p.selected, "fist");
+  const d = g.drops[0];
+  p.x = d.x;
+  p.z = d.z;
+  g.action(p, { type: "gatherStart", id: d.id });
+  step(g, 2);
+  assert.equal(p.inventory.axe, 1);
+  assert.equal(g.drops.length, 0);
+});
+test("radio repair accepts contributions from two players, only at tower", () => {
+  const { g, p } = setup(),
+    b = g.add("b", "islam");
+  p.inventory.part = 2;
+  p.inventory.scrap = 4;
+  p.inventory.fuel = 1;
+  b.inventory.part = 1;
+  g.action(p, { type: "radio" });
+  assert.equal(g.radio.part, 0);
+  const r = POIS.find((p) => p.id === "radio");
+  p.x = b.x = r.x;
+  p.z = b.z = r.z;
+  g.action(p, { type: "radio" });
+  assert.equal(g.radio.part, 2);
+  assert.equal(g.radio.active, false);
+  g.action(b, { type: "radio" });
+  assert.equal(g.radio.active, true);
+  assert.equal(b.inventory.part, undefined);
+});
+test("survival schema persists personal progression and shared resources", () => {
+  const { g, p } = setup();
+  p.inventory.scrap = 7;
+  g.radio.part = 2;
+  const restored = new Game(JSON.parse(JSON.stringify(g.save()))),
+    q = restored.add(p.id, "deni");
+  assert.equal(q.inventory.scrap, 7);
+  assert.equal(restored.radio.part, 2);
+  assert.equal(restored.save().schema, 3);
+});
+test("jump consumes stamina and lands on terrain", () => {
+  const { g, p } = setup();
+  g.action(p, { type: "jump" });
+  step(g, 0.2);
+  assert.ok(p.airY > 0);
+  step(g, 1);
+  assert.equal(p.airY, 0);
+});
+test("disconnected survivors do not starve while waiting to reconnect", () => {
   const { g, p } = setup();
   p.connected = false;
-  p.input = { x: 1, z: 0, run: true, aim: 0 };
-  p.loot = { elapsed: 2, duration: 15, bag: false };
-  const before = { x: p.x, z: p.z, stamina: p.stamina };
-  step(g, 5);
-  assert.equal(p.x, before.x);
-  assert.equal(p.z, before.z);
-  assert.equal(p.stamina, before.stamina);
-  assert.equal(p.loot.elapsed, 2);
+  const hunger = p.hunger;
+  step(g, 30);
+  assert.equal(p.hunger, hunger);
 });
-test("FPS aiming upward does not hit a person on the ground", () => {
+
+test("wood and berries can be foraged outside camp without resource duplication", () => {
   const { g, p } = setup();
-  Object.assign(p, {
-    x: 0,
-    z: 0,
-    selected: "pistol",
-    inventory: ["pistol"],
-    mag: { pistol: 12, smg: 0 },
-  });
-  g.npcs = [
-    { id: "target", type: "civil", x: 0, z: 6, yaw: 0, hp: 100, dead: 0 },
-  ];
-  g.action(p, { type: "input", x: 0, z: 0, aim: 0, pitch: 1.2 });
-  g.action(p, { type: "shoot" });
-  assert.equal(g.npcs[0].hp, 100);
-  step(g, 0.4);
-  g.npcs[0].x = 0;
-  g.npcs[0].z = 6;
-  g.action(p, { type: "input", x: 0, z: 0, aim: 0, pitch: 0 });
-  g.action(p, { type: "shoot" });
-  assert.equal(g.npcs[0].hp, 70);
+  const t = TREES.find((t) => Math.abs(t.x) > 150);
+  gather(g, p, t);
+  assert.equal(p.inventory.wood, 4);
+  g.action(p, { type: "gatherStart", id: t.id });
+  assert.equal(p.loot, null);
+  const b = NODES.find((n) => n.wild && n.type === "berry");
+  gather(g, p, b);
+  assert.equal(p.inventory.berries, 1);
 });
